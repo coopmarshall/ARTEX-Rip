@@ -13,6 +13,7 @@ All notable changes to this project are documented in this file. The format is b
 
 - **`secrets-hunting`**: find and minimally verify exposed credentials (JS bundles/source maps, exposed `.git`, backups, verbose errors, cloud metadata SSRF, container layers), tied into the verified-findings fields (`poe_level`, `verification_status`).
 - **`exploit-intel`**: cross-reference fingerprinted software/versions and CVE ids against Exploit-DB (`searchsploit`), the NVD API, CIRCL cve-search, and recent-PoC trackers (nomi-sec/PoC-in-GitHub, trickest/cve), with PoC-hygiene rules (read before running, non-destructive, in-scope only) and the same verification discipline as other finding types.
+- **`cloud-recon`**: map an authorized target's cloud footprint (S3/GCS/Azure Blob buckets, IAM role trust, management-plane exposure, metadata-SSRF leads) and verify misconfigurations with minimal, non-destructive reads only.
 
 ## [0.6.0] - 2026-11-12
 
