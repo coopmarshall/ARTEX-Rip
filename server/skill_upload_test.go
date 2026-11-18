@@ -18,11 +18,14 @@ import (
 )
 
 func TestValidSkillName(t *testing.T) {
-	ok := []string{"web-recon", "a", "nuclei2", "chinese-skill", "port-scan-x", "japanese-skill"}
+	ok := []string{"web-recon", "a", "nuclei2", "chinese-skill", "port-scan-x", "japanese-skill", "日本語", "café", "москва"}
 	bad := []string{
 		"", "Web-Recon", "-lead", "trail-", "dou--ble", "has space", "chinese skill",
 		"dot.name", "a/b", `a\b`, "..", ".", "chinese/skill", "sk\x00ill", "ba‮d",
 		strings.Repeat("a", 65), "1abc", "chinese-skill!",
+		"Café",   // non-ASCII letter, but the leading rune is uppercase
+		"МОСКВА", // all-caps Cyrillic: every rune is a cased letter, every one uppercase
+		"日本語Ａ",   // mixing in a full-width Latin capital
 	}
 	for _, n := range ok {
 		if !validSkillName(n) {

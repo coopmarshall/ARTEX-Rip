@@ -4,6 +4,10 @@ All notable changes to this project are documented in this file. The format is b
 
 ## [Unreleased]
 
+### Fix: `validSkillName` accepted non-ASCII uppercase skill names
+
+- `validSkillName` (server/server_mgmt.go), which gates skill creation/rename and backs an error message explicitly promising "lowercase alphanumeric/hyphen characters," let a non-ASCII letter through on `unicode.IsLetter` alone -- which doesn't check case. An all-caps Cyrillic name like `МОСКВА` (every rune a cased, uppercase letter) or a mixed-script name with an embedded full-width Latin capital both passed validation despite being nowhere close to lowercase. Confirmed with a regression test that fails against the old code (verified via `git stash`) and passes against the fix: a non-ASCII letter must now also satisfy `r == unicode.ToLower(r)`, which case-less scripts (CJK) trivially satisfy (preserving support for those skill names) while rejecting any genuinely-cased uppercase letter. Not a path-traversal risk either way (no letter in any script is a path separator), but a real contract violation with a latent case-insensitive-filesystem collision risk.
+
 ### Fix: raw-fetch frontend endpoints showed only an HTTP status on error
 
 - `workspaceUpload`, `workspaceDownload`, `exportFindings` and `report` (`web/src/lib/api.ts`) fetch the raw `Response` directly (for a blob, text body, or a response header) and so bypass the shared `http()` helper -- which meant their error path only ever showed `"Upload failed: 500"` instead of the backend's actual `{error: "..."}` message, unlike the rest of the API surface. Extracted the error-body-extraction logic `http()` already had into a small shared `errorFromResponse()` helper and applied it to all four, so a real backend error message (e.g. an export failure, a disk-full upload) now reaches the user instead of a bare status code. Pre-existing, not introduced this session; not a behavior regression risk since the fallback message is unchanged when the error body is empty or non-JSON.

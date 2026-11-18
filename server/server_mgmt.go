@@ -43,8 +43,13 @@ func validSkillName(name string) bool {
 	if len(rs) > 64 {
 		return false
 	}
+	// A non-ASCII letter must also be lowercase where the script has case at all
+	// (unicode.ToLower is a no-op for scripts without case, e.g. CJK, so those
+	// still pass); unicode.IsLetter alone does not check case, so an all-caps
+	// Cyrillic/Greek/accented-Latin name used to slip through despite the
+	// "lowercase" contract this function's callers advertise in their error text.
 	isLetter := func(r rune) bool {
-		return (r >= 'a' && r <= 'z') || (r > unicode.MaxASCII && unicode.IsLetter(r))
+		return (r >= 'a' && r <= 'z') || (r > unicode.MaxASCII && unicode.IsLetter(r) && r == unicode.ToLower(r))
 	}
 	if !isLetter(rs[0]) || rs[len(rs)-1] == '-' {
 		return false
