@@ -356,6 +356,24 @@ func TestDiscordSuppressesMentionsAndEscapesMarkdown(t *testing.T) {
 	}
 }
 
+// TestDiscordBatchLineWithAndWithoutAssets covers both branches directly:
+// the end-to-end batch Send tests all use batchMsg(), whose items always
+// carry an asset, so the no-asset branch was never exercised.
+func TestDiscordBatchLineWithAndWithoutAssets(t *testing.T) {
+	lim := Limits{AssetsShown: 3}
+	withAssets := discordBatchLine(Item{Severity: "high", Name: "XSS", Assets: []string{"a.example.com"}}, 1, lim)
+	if !strings.Contains(withAssets, "a.example.com") {
+		t.Errorf("expected the asset to appear, got %q", withAssets)
+	}
+	withoutAssets := discordBatchLine(Item{Severity: "high", Name: "XSS"}, 1, lim)
+	if strings.Contains(withoutAssets, "—") {
+		t.Errorf("no-asset line should not render the asset separator, got %q", withoutAssets)
+	}
+	if !strings.Contains(withoutAssets, "XSS") {
+		t.Errorf("expected the title to appear, got %q", withoutAssets)
+	}
+}
+
 func TestDiscordTruncatesToContentLimit(t *testing.T) {
 	var content string
 	srv := capturePost(t, `{}`, func(t *testing.T, b map[string]any, _ *http.Request) {
@@ -405,6 +423,24 @@ func withPagerDutyEndpoint(t *testing.T, url string) {
 	orig := pagerDutyEndpoint
 	pagerDutyEndpoint = url
 	t.Cleanup(func() { pagerDutyEndpoint = orig })
+}
+
+// TestPagerDutySeverityMapsEveryBranch covers all four branches directly
+// (the end-to-end Send tests only ever exercise "high" via singleMsg()).
+func TestPagerDutySeverityMapsEveryBranch(t *testing.T) {
+	cases := []struct{ in, want string }{
+		{"critical", "critical"},
+		{"high", "error"},
+		{"medium", "warning"},
+		{"low", "info"},
+		{"", "info"},
+		{"something-unexpected", "info"},
+	}
+	for _, tc := range cases {
+		if got := pagerDutySeverity(tc.in); got != tc.want {
+			t.Errorf("pagerDutySeverity(%q) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
 }
 
 func TestPagerDutyTriggerCarriesDedupKeyAndSeverity(t *testing.T) {
@@ -527,6 +563,24 @@ func withOpsgenieEndpoint(t *testing.T, url string) {
 	orig := opsgenieEndpoint
 	opsgenieEndpoint = url
 	t.Cleanup(func() { opsgenieEndpoint = orig })
+}
+
+// TestOpsgeniePriorityMapsEveryBranch covers all five branches directly (the
+// end-to-end Send tests only ever exercise "high" via singleMsg()).
+func TestOpsgeniePriorityMapsEveryBranch(t *testing.T) {
+	cases := []struct{ in, want string }{
+		{"critical", "P1"},
+		{"high", "P2"},
+		{"medium", "P3"},
+		{"low", "P4"},
+		{"", "P5"},
+		{"something-unexpected", "P5"},
+	}
+	for _, tc := range cases {
+		if got := opsgeniePriority(tc.in); got != tc.want {
+			t.Errorf("opsgeniePriority(%q) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
 }
 
 func TestOpsgenieCreateCarriesAliasAndAuthHeader(t *testing.T) {
