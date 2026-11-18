@@ -4,6 +4,11 @@ All notable changes to this project are documented in this file. The format is b
 
 ## [Unreleased]
 
+### Coverage sweep: LLM judge config, and guard/intercept health check
+
+- Checked `guard/` (87.4%) and `intercept/` (76.3% in-package, 70.4% merged with `server/`'s integration tests) coverage; both are already well-exercised, with most apparent "0%" functions actually covered cross-package (confirmed with `-coverpkg`) rather than genuinely untested.
+- Of the few genuinely untested functions, added `intercept/judge_config_test.go` for `GetJudgeConfig`/`SetJudgeConfig` (the LLM-fallback-judge settings persisted via the KV settings table): confirms the round-trip, and that an empty `Prompt` falls back to the built-in template. Also documents (via a test, not a fix) a defense-in-depth gap: `SetJudgeConfig` doesn't itself validate `FailAction`/`AskTimeoutAction` against their allowed choices, relying entirely on the one wired caller (`server/intercept.go`'s handler, which does validate) -- not reachable as a bug today, but a future direct caller would hit a confusing failure mode where Set succeeds while the invalid value is silently never honored. Left unfixed: `intercept/` is safety-adjacent and the one reachable path is already correct.
+
 ### Coverage sweep: platform tool mapping and task category normalization
 
 - Added unit tests for `toDBTool`/`coalesceStr`/`enabledWord` (server/platform_tools.go) and `normalizeTaskCategoryName` (db/task_categories.go), all previously 0% or only incidentally covered. All confirmed correct: `toDBTool` maps every field one-to-one and defaults a nil `Enabled` to true without overriding an explicit false; `normalizeTaskCategoryName` collapses internal whitespace runs and trims edges before storage while deriving a lowercased key for case-insensitive uniqueness. Also hand-traced and ruled out a suspected bug: `decodeTaskCategoryRequest` validates against the trimmed name but passes the raw string onward -- not a problem, because `normalizeTaskCategoryName` re-normalizes it again at the DB layer before storage or the uniqueness check.
