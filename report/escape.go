@@ -75,3 +75,31 @@ func mdCodeFence(body string) string {
 	}
 	return strings.Repeat("`", n)
 }
+
+// csvFormulaGuard neutralizes CSV/"formula" injection (CWE-1236): if a cell
+// value starts with =, +, -, @, or a tab/CR, Excel and Google Sheets treat
+// it as a formula to evaluate on open rather than literal text — and older
+// Excel versions chain that into DDE command execution on the analyst's own
+// machine. FindingsCSV's Name/Class/Task/Summary columns all come from the
+// same untrusted provenance as the Markdown exports (the model's
+// report_finding call, shaped by the scanned target's responses), so a
+// finding titled `=cmd|'/c calc'!A1` is a realistic, not hypothetical, input
+// here.
+//
+// The standard mitigation: prefix such a value with a single quote, which
+// every mainstream spreadsheet application treats as "force this cell to
+// text" and does not display as part of the value. encoding/csv's own
+// quoting (commas, newlines, embedded quotes) is a separate, already-handled
+// concern — this guards the one case a correctly-quoted CSV field can still
+// trigger evaluation in the opening application.
+func csvFormulaGuard(s string) string {
+	if s == "" {
+		return s
+	}
+	switch s[0] {
+	case '=', '+', '-', '@', '\t', '\r':
+		return "'" + s
+	default:
+		return s
+	}
+}

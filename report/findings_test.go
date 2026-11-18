@@ -76,6 +76,47 @@ func TestFindingsCSVDefaultsUnassessedVerification(t *testing.T) {
 	}
 }
 
+// TestFindingsCSVGuardsAgainstFormulaInjection is the end-to-end regression
+// for CWE-1236 on the one export format that was still exposed to it: a
+// finding whose model-reported Name/Class/Summary happens to start with a
+// formula-triggering character must not reach the CSV cell unguarded.
+func TestFindingsCSVGuardsAgainstFormulaInjection(t *testing.T) {
+	f := &db.DBFinding{
+		ID:              1,
+		Name:            "=HYPERLINK(\"http://attacker.tld\",\"click\")",
+		VulnClass:       "+malicious",
+		TaskDescription: "@SUM(A1:A9)",
+		Summary:         "-1+1",
+		CreatedAt:       time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+	}
+	body := strings.TrimPrefix(string(FindingsCSV([]*db.DBFinding{f})), "\xEF\xBB\xBF")
+	rows, err := csv.NewReader(strings.NewReader(body)).ReadAll()
+	if err != nil {
+		t.Fatalf("not valid CSV: %v", err)
+	}
+	data := rows[1]
+	header := rows[0]
+	col := func(name string) string {
+		for i, h := range header {
+			if h == name {
+				return data[i]
+			}
+		}
+		t.Fatalf("column %q not found", name)
+		return ""
+	}
+	for _, c := range []struct{ name, want string }{
+		{"Name", "'=HYPERLINK(\"http://attacker.tld\",\"click\")"},
+		{"Class", "'+malicious"},
+		{"Task", "'@SUM(A1:A9)"},
+		{"Summary", "'-1+1"},
+	} {
+		if got := col(c.name); got != c.want {
+			t.Errorf("column %s = %q, want %q (formula-guarded)", c.name, got, c.want)
+		}
+	}
+}
+
 // TestVerificationLabelMatchesBadgeWording locks in that the Markdown export
 // uses the exact same five-state wording as the findings-page verification
 // badge (0.6.0: "Verified L3/L4", "Unverified", "Blocked", "Not assessed",

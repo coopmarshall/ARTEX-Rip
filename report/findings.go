@@ -197,15 +197,15 @@ func FindingsCSV(fs []*db.DBFinding) []byte {
 	for _, f := range items {
 		_ = w.Write([]string{
 			fmt.Sprintf("%d", f.ID),
-			findingTitle(f),
-			f.VulnClass,
+			csvFormulaGuard(findingTitle(f)),
+			csvFormulaGuard(f.VulnClass),
 			nz(f.Severity, "info"),
 			nz(f.Status, "pending"),
 			fmt.Sprint(f.PoELevel),
 			nz(f.VerificationStatus, "not_assessed"),
-			f.TaskDescription,
+			csvFormulaGuard(f.TaskDescription),
 			f.CreatedAt.Format("2006-01-02 15:04:05"),
-			strings.TrimSpace(f.Summary),
+			csvFormulaGuard(strings.TrimSpace(f.Summary)),
 			fmt.Sprint(len(f.TrafficBindings)), findingTrafficIDs(f),
 		})
 	}

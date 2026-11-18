@@ -81,6 +81,40 @@ func TestMdCodeFenceMinimumThreeBackticks(t *testing.T) {
 	}
 }
 
+// TestCSVFormulaGuardNeutralizesFormulaPrefixes covers CWE-1236: a cell
+// value starting with one of these characters is evaluated as a formula by
+// Excel/Google Sheets on open rather than shown as literal text, and on
+// older Excel this chains into DDE command execution on the analyst's own
+// machine when they open the exported CSV.
+func TestCSVFormulaGuardNeutralizesFormulaPrefixes(t *testing.T) {
+	cases := []string{
+		`=cmd|'/c calc'!A1`,
+		"+1+1",
+		"-1+1",
+		"@SUM(A1:A9)",
+		"\tsneaky",
+		"\rsneaky",
+	}
+	for _, in := range cases {
+		got := csvFormulaGuard(in)
+		if got[0] != '\'' {
+			t.Errorf("csvFormulaGuard(%q) = %q, should be prefixed with a literal quote", in, got)
+		}
+		if got[1:] != in {
+			t.Errorf("csvFormulaGuard(%q) = %q, the original value must survive unchanged after the quote", in, got)
+		}
+	}
+}
+
+func TestCSVFormulaGuardLeavesOrdinaryTextAlone(t *testing.T) {
+	cases := []string{"", "SQL injection", "100% confirmed", "a-b-c has a dash but not at position 0"}
+	for _, in := range cases {
+		if got := csvFormulaGuard(in); got != in {
+			t.Errorf("csvFormulaGuard(%q) = %q, ordinary text must be unchanged", in, got)
+		}
+	}
+}
+
 func isAllBackticks(s string) bool {
 	if s == "" {
 		return false
