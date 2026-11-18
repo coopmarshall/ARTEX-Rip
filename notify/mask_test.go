@@ -392,7 +392,7 @@ func TestSecretKeysDeclaredForEveryKind(t *testing.T) {
 	expect := map[string]bool{
 		KindDingTalk: true, KindFeishu: true, KindWeCom: true,
 		KindWebhook: true, KindTelegram: true, KindEmail: true, KindSlack: true,
-		KindDiscord: true,
+		KindDiscord: true, KindPagerDuty: true,
 	}
 	for kind, ch := range registry {
 		if !expect[kind] {

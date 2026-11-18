@@ -13,6 +13,7 @@ export const KIND_LABEL: Record<string, string> = {
   email: "Email",
   slack: "Slack",
   discord: "Discord",
+  pagerduty: "PagerDuty",
 };
 
 // Config field definitions per channel.
@@ -104,6 +105,14 @@ export const CHANNEL_FIELDS: Record<string, FieldDef[]> = {
       kind: "text",
       placeholder: "https://discord.com/api/webhooks/000/xxxxxxxx",
       help: "Create one under Server Settings → Integrations → Webhooks on the target channel",
+    },
+  ],
+  pagerduty: [
+    {
+      key: "routing_key",
+      label: "Routing Key",
+      kind: "password",
+      help: "The Integration Key of a PagerDuty “Events API v2” integration on the target service",
     },
   ],
   telegram: [

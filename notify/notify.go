@@ -20,14 +20,15 @@ package notify
 // notification_channels.kind, whitelisted on the server side (same approach as
 // findings.status — no DB CHECK constraint, so adding channels later is easy).
 const (
-	KindDingTalk = "dingtalk" // DingTalk custom bot
-	KindFeishu   = "feishu"   // Feishu (incl. Lark) custom bot
-	KindWeCom    = "wecom"    // WeCom group bot
-	KindWebhook  = "webhook"  // Generic webhook: custom method/headers/JSON template
-	KindTelegram = "telegram" // Telegram Bot API
-	KindEmail    = "email"    // SMTP email
-	KindSlack    = "slack"    // Slack Incoming Webhook
-	KindDiscord  = "discord"  // Discord webhook
+	KindDingTalk  = "dingtalk"  // DingTalk custom bot
+	KindFeishu    = "feishu"    // Feishu (incl. Lark) custom bot
+	KindWeCom     = "wecom"     // WeCom group bot
+	KindWebhook   = "webhook"   // Generic webhook: custom method/headers/JSON template
+	KindTelegram  = "telegram"  // Telegram Bot API
+	KindEmail     = "email"     // SMTP email
+	KindSlack     = "slack"     // Slack Incoming Webhook
+	KindDiscord   = "discord"   // Discord webhook
+	KindPagerDuty = "pagerduty" // PagerDuty Events API v2
 )
 
 // Event kinds, corresponding to notification_events.kind.

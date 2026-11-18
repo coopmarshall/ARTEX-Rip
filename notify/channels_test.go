@@ -396,6 +396,130 @@ func TestDiscordReportsRealStatusCodes(t *testing.T) {
 	}
 }
 
+// withPagerDutyEndpoint points pagerDutyEndpoint at an httptest server for the
+// duration of the test. PagerDuty is the one channel with no per-config URL
+// to redirect (see the pagerDutyEndpoint doc comment), so the fixed endpoint
+// itself must be swapped instead.
+func withPagerDutyEndpoint(t *testing.T, url string) {
+	t.Helper()
+	orig := pagerDutyEndpoint
+	pagerDutyEndpoint = url
+	t.Cleanup(func() { pagerDutyEndpoint = orig })
+}
+
+func TestPagerDutyTriggerCarriesDedupKeyAndSeverity(t *testing.T) {
+	var body map[string]any
+	srv := capturePost(t, `{"status":"success","dedup_key":"x"}`, func(t *testing.T, b map[string]any, r *http.Request) {
+		body = b
+	})
+	withPagerDutyEndpoint(t, srv.URL)
+	if _, err := (pagerDutyChannel{}).Send(context.Background(), map[string]any{"routing_key": "rk"}, singleMsg()); err != nil {
+		t.Fatalf("delivery failed: %v", err)
+	}
+	if body["event_action"] != "trigger" {
+		t.Fatalf("expected trigger, got %v", body["event_action"])
+	}
+	if body["dedup_key"] != "artex-finding-42" {
+		t.Fatalf("dedup_key wrong: %v", body["dedup_key"])
+	}
+	payload, _ := body["payload"].(map[string]any)
+	if payload["severity"] != "error" { // singleMsg() uses severity "high"
+		t.Fatalf("severity mapping wrong: %v", payload["severity"])
+	}
+	if body["routing_key"] != "rk" {
+		t.Fatalf("routing_key lost: %v", body["routing_key"])
+	}
+}
+
+// TestPagerDutyStatusChangeToClosedResolves is the one behavior that is not
+// just text rendering: closing a finding must resolve the PagerDuty incident
+// its original trigger opened, using the same dedup_key, or the on-call
+// incident stays open forever.
+func TestPagerDutyStatusChangeToClosedResolves(t *testing.T) {
+	cases := []struct {
+		toStatus string
+		resolves bool
+	}{
+		{"fixed", true}, {"resolved", true}, {"false_positive", true},
+		{"duplicate", true}, {"risk_accepted", true}, {"ignored", true},
+		{"confirmed", false}, {"in_progress", false}, {"pending", false},
+	}
+	for _, tc := range cases {
+		var body map[string]any
+		srv := capturePost(t, `{"status":"success"}`, func(t *testing.T, b map[string]any, _ *http.Request) { body = b })
+		withPagerDutyEndpoint(t, srv.URL)
+		m := Message{Items: []Item{{FindingID: 7, Severity: "high", FromStatus: "pending", ToStatus: tc.toStatus}}}
+		if _, err := (pagerDutyChannel{}).Send(context.Background(), map[string]any{"routing_key": "rk"}, m); err != nil {
+			t.Fatalf("toStatus=%s: delivery failed: %v", tc.toStatus, err)
+		}
+		wantAction := "trigger"
+		if tc.resolves {
+			wantAction = "resolve"
+		}
+		if body["event_action"] != wantAction {
+			t.Errorf("toStatus=%s: event_action=%v, want %s", tc.toStatus, body["event_action"], wantAction)
+		}
+		if body["dedup_key"] != "artex-finding-7" {
+			t.Errorf("toStatus=%s: dedup_key=%v, want artex-finding-7", tc.toStatus, body["dedup_key"])
+		}
+	}
+}
+
+// TestPagerDutyBatchBecomesOneIncidentNoDedupKey locks in the "one message,
+// one HTTP request" invariant the rate limiter depends on (see
+// server/notifier.go): a digest of N findings must still be exactly one
+// enqueue call, not N, and since no single finding owns the incident it
+// carries no dedup_key.
+func TestPagerDutyBatchBecomesOneIncidentNoDedupKey(t *testing.T) {
+	var body map[string]any
+	calls := 0
+	srv := capturePost(t, `{"status":"success"}`, func(t *testing.T, b map[string]any, _ *http.Request) {
+		body = b
+		calls++
+	})
+	withPagerDutyEndpoint(t, srv.URL)
+	kept, err := (pagerDutyChannel{}).Send(context.Background(), map[string]any{"routing_key": "rk"}, batchMsg(5))
+	if err != nil {
+		t.Fatalf("delivery failed: %v", err)
+	}
+	if calls != 1 {
+		t.Fatalf("expected exactly 1 HTTP request for the whole batch, got %d", calls)
+	}
+	if kept != 5 {
+		t.Fatalf("kept = %d, want 5 (the whole batch is represented in the one incident)", kept)
+	}
+	if _, has := body["dedup_key"]; has {
+		t.Fatalf("a digest incident must not carry a dedup_key, got %v", body["dedup_key"])
+	}
+	if body["event_action"] != "trigger" {
+		t.Fatalf("expected trigger, got %v", body["event_action"])
+	}
+}
+
+func TestPagerDutyReportsRealStatusCodes(t *testing.T) {
+	rateLimited := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusTooManyRequests)
+		_, _ = io.WriteString(w, `{"status":"rate limited"}`)
+	}))
+	t.Cleanup(rateLimited.Close)
+	withPagerDutyEndpoint(t, rateLimited.URL)
+	_, err := (pagerDutyChannel{}).Send(context.Background(), map[string]any{"routing_key": "rk"}, singleMsg())
+	if err == nil || IsPermanent(err) {
+		t.Fatalf("429 should be retryable, got %v", err)
+	}
+
+	bad := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = io.WriteString(w, `{"status":"invalid event","errors":["routing_key not recognized"]}`)
+	}))
+	t.Cleanup(bad.Close)
+	withPagerDutyEndpoint(t, bad.URL)
+	_, err = (pagerDutyChannel{}).Send(context.Background(), map[string]any{"routing_key": "rk"}, singleMsg())
+	if err == nil || !IsPermanent(err) {
+		t.Fatalf("400 (bad routing key) is a configuration error, should be permanent, got %v", err)
+	}
+}
+
 func TestWebhookDefaultTemplateProducesValidJSON(t *testing.T) {
 	// This case is the whole point of the default template: when the title
 	// contains quotes and newlines, any naive `"title": "{{.Title}}"` produces
@@ -572,6 +696,7 @@ func TestChannelValidateReportsMissingFields(t *testing.T) {
 		{KindTelegram, map[string]any{"bot_token": "t"}, "Chat ID"},
 		{KindSlack, map[string]any{}, "Webhook"},
 		{KindDiscord, map[string]any{}, "Webhook"},
+		{KindPagerDuty, map[string]any{}, "Routing Key"},
 		{KindEmail, map[string]any{}, "SMTP"},
 		{KindEmail, map[string]any{"host": "h"}, "port"},
 		{KindEmail, map[string]any{"host": "h", "port": 587, "from": "f"}, "recipient"},
@@ -626,9 +751,9 @@ func TestEmailSMTPErrorClassification(t *testing.T) {
 }
 
 func TestRegistryCoversAllKinds(t *testing.T) {
-	// All eight channels are required — a missing one would silently vanish from
+	// All nine channels are required — a missing one would silently vanish from
 	// the UI dropdown.
-	want := []string{KindDingTalk, KindDiscord, KindEmail, KindFeishu, KindSlack, KindTelegram, KindWebhook, KindWeCom}
+	want := []string{KindDingTalk, KindDiscord, KindEmail, KindFeishu, KindPagerDuty, KindSlack, KindTelegram, KindWebhook, KindWeCom}
 	got := Kinds()
 	if len(got) != len(want) {
 		t.Fatalf("channel count should be %d, got %d: %v", len(want), len(got), got)

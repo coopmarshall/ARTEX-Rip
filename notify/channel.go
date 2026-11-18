@@ -59,14 +59,15 @@ type Channel interface {
 // newly added channel surfaces omissions at compile time rather than via runtime
 // side effects.
 var registry = map[string]Channel{
-	KindDingTalk: dingTalkChannel{},
-	KindFeishu:   feishuChannel{},
-	KindWeCom:    weComChannel{},
-	KindWebhook:  webhookChannel{},
-	KindTelegram: telegramChannel{},
-	KindEmail:    emailChannel{},
-	KindSlack:    slackChannel{},
-	KindDiscord:  discordChannel{},
+	KindDingTalk:  dingTalkChannel{},
+	KindFeishu:    feishuChannel{},
+	KindWeCom:     weComChannel{},
+	KindWebhook:   webhookChannel{},
+	KindTelegram:  telegramChannel{},
+	KindEmail:     emailChannel{},
+	KindSlack:     slackChannel{},
+	KindDiscord:   discordChannel{},
+	KindPagerDuty: pagerDutyChannel{},
 }
 
 // Get returns the channel implementation for a type.
