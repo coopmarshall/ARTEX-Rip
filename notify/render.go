@@ -1,6 +1,7 @@
 package notify
 
 import (
+	"fmt"
 	"strings"
 	"unicode/utf8"
 )
@@ -160,6 +161,15 @@ func assetLine(assets []string, limit int) string {
 		return strings.Join(assets, ", ")
 	}
 	return strings.Join(assets[:limit], ", ") + " and " + itoa(len(assets)-limit) + " more"
+}
+
+// alertCorrelationKey derives a stable per-finding identifier shared by the
+// incident-management channels (PagerDuty's dedup_key, Opsgenie's alias), so
+// a later lifecycle transition (resolve/close) for the same finding targets
+// the exact alert/incident its original trigger opened instead of the
+// platform treating it as unrelated.
+func alertCorrelationKey(findingID int64) string {
+	return fmt.Sprintf("artex-finding-%d", findingID)
 }
 
 // itoa is a short alias for strconv.Itoa, used only for assembling display text,

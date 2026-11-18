@@ -29,6 +29,7 @@ const (
 	KindSlack     = "slack"     // Slack Incoming Webhook
 	KindDiscord   = "discord"   // Discord webhook
 	KindPagerDuty = "pagerduty" // PagerDuty Events API v2
+	KindOpsgenie  = "opsgenie"  // Opsgenie Alert API v2
 )
 
 // Event kinds, corresponding to notification_events.kind.

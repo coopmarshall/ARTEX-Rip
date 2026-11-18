@@ -520,6 +520,114 @@ func TestPagerDutyReportsRealStatusCodes(t *testing.T) {
 	}
 }
 
+// withOpsgenieEndpoint points opsgenieEndpoint at an httptest server for the
+// duration of the test, same reasoning as withPagerDutyEndpoint.
+func withOpsgenieEndpoint(t *testing.T, url string) {
+	t.Helper()
+	orig := opsgenieEndpoint
+	opsgenieEndpoint = url
+	t.Cleanup(func() { opsgenieEndpoint = orig })
+}
+
+func TestOpsgenieCreateCarriesAliasAndAuthHeader(t *testing.T) {
+	var body map[string]any
+	var gotPath, gotAuth string
+	srv := capturePost(t, `{"result":"Request will be processed"}`, func(t *testing.T, b map[string]any, r *http.Request) {
+		body, gotPath, gotAuth = b, r.URL.Path, r.Header.Get("Authorization")
+	})
+	withOpsgenieEndpoint(t, srv.URL)
+	if _, err := (opsgenieChannel{}).Send(context.Background(), map[string]any{"api_key": "k"}, singleMsg()); err != nil {
+		t.Fatalf("delivery failed: %v", err)
+	}
+	if gotAuth != "GenieKey k" {
+		t.Fatalf("Authorization header wrong: %q", gotAuth)
+	}
+	if gotPath != "" && gotPath != "/" {
+		t.Fatalf("create should POST to the base endpoint, got path %q", gotPath)
+	}
+	if body["alias"] != "artex-finding-42" {
+		t.Fatalf("alias wrong: %v", body["alias"])
+	}
+	if body["priority"] != "P2" { // singleMsg() uses severity "high"
+		t.Fatalf("priority mapping wrong: %v", body["priority"])
+	}
+	if l := len(body["message"].(string)); l > opsgenieMessageLimit {
+		t.Fatalf("message %d runes exceeds Opsgenie's %d limit", l, opsgenieMessageLimit)
+	}
+}
+
+// TestOpsgenieStatusChangeRoutesByTerminality is the core design decision in
+// this channel: a closed-status transition must hit the close endpoint, and
+// every other status change must hit notes — never create again (see the
+// opsgenieChannel doc comment on why create is not safe to repeat).
+func TestOpsgenieStatusChangeRoutesByTerminality(t *testing.T) {
+	cases := []struct {
+		toStatus   string
+		wantSuffix string
+	}{
+		{"fixed", "/artex-finding-9/close"},
+		{"resolved", "/artex-finding-9/close"},
+		{"confirmed", "/artex-finding-9/notes"},
+		{"in_progress", "/artex-finding-9/notes"},
+	}
+	for _, tc := range cases {
+		var gotPath string
+		srv := capturePost(t, `{"result":"ok"}`, func(t *testing.T, _ map[string]any, r *http.Request) { gotPath = r.URL.Path })
+		withOpsgenieEndpoint(t, srv.URL)
+		m := Message{Items: []Item{{FindingID: 9, Severity: "high", FromStatus: "pending", ToStatus: tc.toStatus}}}
+		if _, err := (opsgenieChannel{}).Send(context.Background(), map[string]any{"api_key": "k"}, m); err != nil {
+			t.Fatalf("toStatus=%s: delivery failed: %v", tc.toStatus, err)
+		}
+		if gotPath != tc.wantSuffix {
+			t.Errorf("toStatus=%s: path=%q, want %q", tc.toStatus, gotPath, tc.wantSuffix)
+		}
+	}
+}
+
+func TestOpsgenieBatchIsOneAlertNoAlias(t *testing.T) {
+	var body map[string]any
+	calls := 0
+	srv := capturePost(t, `{"result":"ok"}`, func(t *testing.T, b map[string]any, _ *http.Request) { body, calls = b, calls+1 })
+	withOpsgenieEndpoint(t, srv.URL)
+	kept, err := (opsgenieChannel{}).Send(context.Background(), map[string]any{"api_key": "k"}, batchMsg(5))
+	if err != nil {
+		t.Fatalf("delivery failed: %v", err)
+	}
+	if calls != 1 {
+		t.Fatalf("expected exactly 1 HTTP request for the whole batch, got %d", calls)
+	}
+	if kept != 5 {
+		t.Fatalf("kept = %d, want 5", kept)
+	}
+	if _, has := body["alias"]; has {
+		t.Fatalf("a digest alert must not carry an alias, got %v", body["alias"])
+	}
+}
+
+func TestOpsgenieReportsRealStatusCodes(t *testing.T) {
+	rateLimited := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusTooManyRequests)
+		_, _ = io.WriteString(w, `{"message":"rate limited"}`)
+	}))
+	t.Cleanup(rateLimited.Close)
+	withOpsgenieEndpoint(t, rateLimited.URL)
+	_, err := (opsgenieChannel{}).Send(context.Background(), map[string]any{"api_key": "k"}, singleMsg())
+	if err == nil || IsPermanent(err) {
+		t.Fatalf("429 should be retryable, got %v", err)
+	}
+
+	bad := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = io.WriteString(w, `{"message":"API key is invalid"}`)
+	}))
+	t.Cleanup(bad.Close)
+	withOpsgenieEndpoint(t, bad.URL)
+	_, err = (opsgenieChannel{}).Send(context.Background(), map[string]any{"api_key": "k"}, singleMsg())
+	if err == nil || !IsPermanent(err) {
+		t.Fatalf("401 (bad api key) is a configuration error, should be permanent, got %v", err)
+	}
+}
+
 func TestWebhookDefaultTemplateProducesValidJSON(t *testing.T) {
 	// This case is the whole point of the default template: when the title
 	// contains quotes and newlines, any naive `"title": "{{.Title}}"` produces
@@ -697,6 +805,7 @@ func TestChannelValidateReportsMissingFields(t *testing.T) {
 		{KindSlack, map[string]any{}, "Webhook"},
 		{KindDiscord, map[string]any{}, "Webhook"},
 		{KindPagerDuty, map[string]any{}, "Routing Key"},
+		{KindOpsgenie, map[string]any{}, "API Key"},
 		{KindEmail, map[string]any{}, "SMTP"},
 		{KindEmail, map[string]any{"host": "h"}, "port"},
 		{KindEmail, map[string]any{"host": "h", "port": 587, "from": "f"}, "recipient"},
@@ -751,9 +860,9 @@ func TestEmailSMTPErrorClassification(t *testing.T) {
 }
 
 func TestRegistryCoversAllKinds(t *testing.T) {
-	// All nine channels are required — a missing one would silently vanish from
+	// All ten channels are required — a missing one would silently vanish from
 	// the UI dropdown.
-	want := []string{KindDingTalk, KindDiscord, KindEmail, KindFeishu, KindPagerDuty, KindSlack, KindTelegram, KindWebhook, KindWeCom}
+	want := []string{KindDingTalk, KindDiscord, KindEmail, KindFeishu, KindOpsgenie, KindPagerDuty, KindSlack, KindTelegram, KindWebhook, KindWeCom}
 	got := Kinds()
 	if len(got) != len(want) {
 		t.Fatalf("channel count should be %d, got %d: %v", len(want), len(got), got)

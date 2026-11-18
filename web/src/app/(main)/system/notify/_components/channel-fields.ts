@@ -14,6 +14,7 @@ export const KIND_LABEL: Record<string, string> = {
   slack: "Slack",
   discord: "Discord",
   pagerduty: "PagerDuty",
+  opsgenie: "Opsgenie",
 };
 
 // Config field definitions per channel.
@@ -113,6 +114,14 @@ export const CHANNEL_FIELDS: Record<string, FieldDef[]> = {
       label: "Routing Key",
       kind: "password",
       help: "The Integration Key of a PagerDuty “Events API v2” integration on the target service",
+    },
+  ],
+  opsgenie: [
+    {
+      key: "api_key",
+      label: "API Key",
+      kind: "password",
+      help: "The API Key of an Opsgenie “API Integration” on the target team",
     },
   ],
   telegram: [

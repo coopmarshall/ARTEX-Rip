@@ -68,6 +68,7 @@ var registry = map[string]Channel{
 	KindSlack:     slackChannel{},
 	KindDiscord:   discordChannel{},
 	KindPagerDuty: pagerDutyChannel{},
+	KindOpsgenie:  opsgenieChannel{},
 }
 
 // Get returns the channel implementation for a type.

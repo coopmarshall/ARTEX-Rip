@@ -120,13 +120,6 @@ func pagerDutySeverity(severity string) string {
 	}
 }
 
-// pagerDutyDedupKey derives PagerDuty's dedup_key from a finding id, so a
-// later resolve for the same finding targets the incident its trigger opened
-// instead of PagerDuty treating it as unrelated.
-func pagerDutyDedupKey(findingID int64) string {
-	return fmt.Sprintf("artex-finding-%d", findingID)
-}
-
 // pagerDutyEvent builds the payload, dedup_key, and event_action for one
 // Send call, and returns kept (see Channel.Send) as its last value.
 func pagerDutyEvent(m Message) (payload map[string]any, dedupKey, action string, kept int) {
@@ -195,5 +188,5 @@ func pagerDutyEvent(m Message) (payload map[string]any, dedupKey, action string,
 		"timestamp":      time.Now().UTC().Format(time.RFC3339),
 		"custom_details": details,
 	}
-	return payload, pagerDutyDedupKey(it.FindingID), action, 1
+	return payload, alertCorrelationKey(it.FindingID), action, 1
 }
