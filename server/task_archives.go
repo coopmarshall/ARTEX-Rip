@@ -660,9 +660,14 @@ func (s *Server) orderColdTaskArchiveBatch(ids []int64, restore bool) []int64 {
 // damaged database operable.
 func topoTaskIDs(ids []string, sources map[string][]string, restore bool) []string {
 	set := map[string]bool{}
+	deduped := make([]string, 0, len(ids))
 	for _, id := range ids {
-		set[id] = true
+		if !set[id] {
+			set[id] = true
+			deduped = append(deduped, id)
+		}
 	}
+	ids = deduped
 	adjacency := map[string][]string{}
 	indegree := map[string]int{}
 	for id := range set {

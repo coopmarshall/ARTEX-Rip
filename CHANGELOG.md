@@ -4,6 +4,10 @@ All notable changes to this project are documented in this file. The format is b
 
 ## [Unreleased]
 
+### Fix: duplicate task/archive ids could appear twice in archive/restore batch order
+
+- `topoTaskIDs` (server/task_archives.go), the topological sort used to order a batch archive/delete/restore request so dependents and sources are processed in a safe order, didn't deduplicate its input: a duplicate id with no incoming edge was queued once per occurrence and so emitted more than once in the output. Found while adding the first unit tests for this previously-0%-covered function (its own doc comment states a robustness goal: "cycles are impossible at creation, but stable fallback keeps a damaged database operable" -- the dedup gap undercut that intent). Reachable via `orderColdTaskArchiveBatch` if two distinct archive rows ever reference the same task_id: `taskToArchive[taskID]` would silently collapse to one archive id, duplicated in the result, while the other archive id's intended position is lost (it still surfaces via the trailing fallback, just unordered). Fixed by deduplicating `ids` at the top of the function; confirmed the new regression test fails against the old code and passes against the fix.
+
 ### Coverage sweep: mcphttp
 
 - Added `mcphttp/sse_test.go` for `parseSSE` (0% coverage before this), the legacy SSE transport's pure response-frame parser. Confirmed correct: it skips server-to-client notifications/requests, tolerates a missing trailing blank line, ignores malformed frames and non-`data:` fields (comments, `id:`, `event:`, `retry:`), and handles CRLF line endings. Considered and rejected one theoretical SSE-spec deviation (consecutive `data:` lines within one event are concatenated without the spec's `\n` join) as not a real bug for this call site: the payload is always single-line JSON-RPC, and JSON never relies on a preserved literal newline inside a string, so the two join strategies are observably identical here.
