@@ -107,3 +107,40 @@ func TestFindingsHTMLIsWellFormed(t *testing.T) {
 		t.Errorf("malformed document:\n%s", out)
 	}
 }
+
+func TestFindingsHTMLSeverityBarsScaleToTheLargestCount(t *testing.T) {
+	fs := []*db.DBFinding{
+		{ID: 1, Severity: "critical", CreatedAt: time.Now()},
+		{ID: 2, Severity: "critical", CreatedAt: time.Now()},
+		{ID: 3, Severity: "low", CreatedAt: time.Now()},
+	}
+	out, err := FindingsHTML(fs, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	cases := []struct{ sev, want string }{
+		{"critical", `width:100%`}, // the largest count (2) fills the bar
+		{"high", `width:0%`},       // zero findings -> zero-width bar, not omitted
+		{"medium", `width:0%`},
+		{"low", `width:50%`}, // 1 of a max of 2
+	}
+	for _, c := range cases {
+		marker := `bar-fill sev-` + c.sev + `" style="` + c.want
+		if !strings.Contains(out, marker) {
+			t.Errorf("expected %q in output for severity %q, not found", marker, c.sev)
+		}
+	}
+}
+
+func TestFindingsHTMLSeverityBarsAllZeroWhenNoFindings(t *testing.T) {
+	out, err := FindingsHTML(nil, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(out, "NaN") || strings.Contains(out, "+Inf") {
+		t.Fatalf("zero findings should not divide by zero in the bar percentage calc:\n%s", out)
+	}
+	if !strings.Contains(out, `style="width:0%"`) {
+		t.Errorf("expected all-zero bars with no findings, got:\n%s", out)
+	}
+}

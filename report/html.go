@@ -36,11 +36,22 @@ func FindingsHTML(fs []*db.DBFinding, generatedAt time.Time) (string, error) {
 		GeneratedAt: generatedAt.Format("2006-01-02 15:04:05"),
 		Total:       len(items),
 		Counts: []htmlSevCount{
-			{"Critical", "critical", counts["critical"]},
-			{"High", "high", counts["high"]},
-			{"Medium", "medium", counts["medium"]},
-			{"Low", "low", counts["low"]},
+			{Label: "Critical", Key: "critical", Count: counts["critical"]},
+			{Label: "High", Key: "high", Count: counts["high"]},
+			{Label: "Medium", Key: "medium", Count: counts["medium"]},
+			{Label: "Low", Key: "low", Count: counts["low"]},
 		},
+	}
+	maxCount := 0
+	for _, c := range data.Counts {
+		if c.Count > maxCount {
+			maxCount = c.Count
+		}
+	}
+	for i := range data.Counts {
+		if maxCount > 0 {
+			data.Counts[i].BarPercent = data.Counts[i].Count * 100 / maxCount
+		}
 	}
 	for _, f := range items {
 		data.Findings = append(data.Findings, htmlFindingView{
@@ -71,6 +82,7 @@ func FindingsHTML(fs []*db.DBFinding, generatedAt time.Time) (string, error) {
 type htmlSevCount struct {
 	Label, Key string
 	Count      int
+	BarPercent int // 0-100, relative to the largest count shown, for the summary bar chart
 }
 
 type htmlFindingView struct {
@@ -97,6 +109,13 @@ var htmlReportTemplate = template.Must(template.New("findings").Parse(`<!doctype
   h2 { font-size: 1.1rem; border-bottom: 1px solid #ddd; padding-bottom: .3rem; margin-top: 2rem; }
   table.summary { border-collapse: collapse; margin: 1rem 0; }
   table.summary td { padding: .3rem .8rem; border: 1px solid #ddd; }
+  table.summary td.bar-cell { border: none; padding: .3rem .8rem .3rem 0; }
+  .bar-track { display: inline-block; width: 160px; height: 10px; background: #eee; border-radius: 3px; overflow: hidden; vertical-align: middle; }
+  .bar-fill { height: 100%; }
+  .bar-fill.sev-critical { background: #b00020; }
+  .bar-fill.sev-high { background: #d2691e; }
+  .bar-fill.sev-medium { background: #b8860b; }
+  .bar-fill.sev-low { background: #2e6da4; }
   .finding { border: 1px solid #ddd; border-radius: 6px; padding: 1rem 1.2rem; margin: 1rem 0; }
   .meta { color: #555; font-size: .9rem; margin: .2rem 0; }
   .meta b { color: #1a1a1a; }
@@ -111,7 +130,7 @@ var htmlReportTemplate = template.Must(template.New("findings").Parse(`<!doctype
 <h1>Vulnerability Findings Summary Report</h1>
 <p class="meta"><b>Generated at</b>: {{.GeneratedAt}} &middot; <b>Total findings</b>: {{.Total}}</p>
 <table class="summary">
-{{range .Counts}}<tr><td class="sev-{{.Key}}">{{.Label}}</td><td>{{.Count}}</td></tr>
+{{range .Counts}}<tr><td class="sev-{{.Key}}">{{.Label}}</td><td>{{.Count}}</td><td class="bar-cell"><span class="bar-track"><span class="bar-fill sev-{{.Key}}" style="width:{{.BarPercent}}%"></span></span></td></tr>
 {{end}}</table>
 {{if eq .Total 0}}<p><em>No matching vulnerabilities.</em></p>{{end}}
 {{range $i, $f := .Findings}}

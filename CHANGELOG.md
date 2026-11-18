@@ -4,6 +4,10 @@ All notable changes to this project are documented in this file. The format is b
 
 ## [Unreleased]
 
+### New: severity bar chart in the HTML findings export
+
+- The HTML export's severity summary table now shows a small horizontal bar per severity, scaled relative to the largest count shown, so the mix is readable at a glance instead of requiring a reader to compare four numbers. Pure CSS (a width-percent `<span>`), no new dependency, no JavaScript. Handles the zero-findings case (all bars render at 0% width, no division-by-zero).
+
 ### Coverage sweep: LLM judge config, and guard/intercept health check
 
 - Checked `guard/` (87.4%) and `intercept/` (76.3% in-package, 70.4% merged with `server/`'s integration tests) coverage; both are already well-exercised, with most apparent "0%" functions actually covered cross-package (confirmed with `-coverpkg`) rather than genuinely untested.
