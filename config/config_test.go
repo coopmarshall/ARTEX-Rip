@@ -62,3 +62,48 @@ func TestMalformedConfigIsAnError(t *testing.T) {
 		t.Fatal("Load: want a parse error")
 	}
 }
+
+// TestRedactMasksPasswordInBothDSNForms is the actual security property
+// Redact exists for: whatever the caller logs the result of (db.go wraps a
+// failed-ping error with it) must never contain the real password.
+// PostgreSQL DSNs come in two interchangeable forms — the postgres:// URL
+// this package's own buildDSN always produces, and libpq's keyword/value
+// syntax, which ARTEX_PG_DSN (user-supplied) may equally well use — and
+// url.Parse does not error on the second form, it just parses it as an
+// opaque path with no Userinfo, so the URL-only masking silently never
+// fires. Confirmed by hand before fixing: the old code returned a
+// keyword/value DSN with its password fully intact.
+func TestRedactMasksPasswordInBothDSNForms(t *testing.T) {
+	cases := []struct {
+		name, dsn string
+	}{
+		{"URL form", "postgres://user:secretpw@host:5432/db?sslmode=disable"},
+		{"keyword/value form", "host=localhost user=postgres password=secretpw dbname=mydb sslmode=disable"},
+		{"keyword/value, password first", "password=secretpw host=localhost user=postgres"},
+		{"keyword/value, quoted password with a space", "host=localhost password='sec ret pw' dbname=mydb"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := Redact(tc.dsn)
+			if strings.Contains(got, "secretpw") || strings.Contains(got, "sec ret pw") {
+				t.Fatalf("password leaked through Redact: %q", got)
+			}
+		})
+	}
+}
+
+// TestRedactLeavesNonSensitiveInputsAlone covers the paths that must not be
+// mangled: no password present, and an unparseable/non-DSN string (Redact
+// must degrade gracefully, not panic or corrupt the input).
+func TestRedactLeavesNonSensitiveInputsAlone(t *testing.T) {
+	cases := []string{
+		"postgres://user@host:5432/db", // no password at all
+		"",
+		"not a dsn at all, just text",
+	}
+	for _, dsn := range cases {
+		if got := Redact(dsn); strings.Contains(got, "password=****") {
+			t.Errorf("Redact(%q) = %q, should not have invented a password field", dsn, got)
+		}
+	}
+}

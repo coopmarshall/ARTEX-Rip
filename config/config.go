@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 )
@@ -196,16 +197,34 @@ func (d Database) buildDSN() string {
 	return u.String()
 }
 
-// String is a redacted view of the resolved DSN (password masked) for logging.
+// kvPasswordPattern matches a `password=...` parameter in PostgreSQL's
+// keyword/value DSN syntax (e.g. "host=localhost user=postgres
+// password=secret dbname=mydb"), either quoted ('...' with \\ and \' escapes)
+// or a plain unquoted token up to the next whitespace.
+var kvPasswordPattern = regexp.MustCompile(`(?i)\bpassword='(?:[^'\\]|\\.)*'|\bpassword=\S+`)
+
+// Redact returns a redacted view of a DSN (password masked) for logging.
+//
+// PostgreSQL connection strings come in two interchangeable forms: the
+// postgres:// URL this package's own buildDSN always produces, and libpq's
+// keyword/value syntax ("host=... user=... password=... dbname=..."), which
+// ARTEX_PG_DSN (user-supplied, not something this package controls the
+// shape of) may equally well be set to. The URL branch below only ever
+// trips for the first form — url.Parse does not error on the second, it
+// just parses it as an opaque path with no Userinfo, so the password-masking
+// condition silently never fires and the real password rides straight
+// through to whatever error or log line calls this. Confirmed by hand: a
+// keyword/value DSN came back from the old code with its password fully
+// intact. The regex pass below runs unconditionally on the result so it
+// also catches a keyword/value password even when the URL branch did
+// nothing, without needing to detect which form was given.
 func Redact(dsn string) string {
-	u, err := url.Parse(dsn)
-	if err != nil {
-		return dsn
-	}
-	if u.User != nil {
+	out := dsn
+	if u, err := url.Parse(dsn); err == nil && u.User != nil {
 		if _, hasPw := u.User.Password(); hasPw {
 			u.User = url.UserPassword(u.User.Username(), "****")
+			out = u.String()
 		}
 	}
-	return u.String()
+	return kvPasswordPattern.ReplaceAllString(out, "password=****")
 }

@@ -4,6 +4,10 @@ All notable changes to this project are documented in this file. The format is b
 
 ## [Unreleased]
 
+### Security: database password could leak into logs via `config.Redact`
+
+- **Fix: `config.Redact` silently failed to mask the password in libpq keyword/value DSNs** (`host=... user=... password=secret dbname=...`), the alternate connection-string syntax `ARTEX_PG_DSN` may equally well be set to. `url.Parse` does not error on this form — it parses it as an opaque path with no `Userinfo` — so the existing URL-based masking's condition silently never fired, and the real password rode straight through to the one call site (`db.go`'s failed-ping error, `fmt.Errorf("ping postgres (%s): %w", config.Redact(dsn), err)`). Confirmed by hand before fixing: the old code returned such a DSN with its password fully intact. `Redact` now also runs a `password=...` regex pass (handling both quoted and unquoted values) unconditionally on top of the existing URL masking, so both DSN forms are covered regardless of which one was given. Found via `go tool cover -func` (this function had 0% test coverage); added tests for both forms.
+
 ### staticcheck-driven cleanup
 
 - **Test gap fixed**: `TestCoreTaskLifecyclePG`'s "it shows in the task list" step fetched `/api/tasks` and checked only the HTTP status code — the response body was never actually inspected, so the comment's claim was unverified. Now asserts the created task is actually present in the returned list.
