@@ -167,20 +167,17 @@ type taskLLMStreamHooks struct {
 	transition func(taskLLMSelection, db.TaskLLMTransition, error)
 }
 
-// current resolves the provider this role runs on, by precedence:
+// currentFor resolves the provider this role runs on, by precedence:
 // Agent binding → task LLM profile chain → global/environment configuration.
 // Binding wins over the task chain: a role explicitly assigned a model keeps running
 // on that model; only when the binding is missing or fails to build does it fall back
 // to the task chain, and to the global configuration when the chain is empty.
 // The returned profile id is non-zero only on the task-chain path — streamTaskLLM uses it to decide whether a quota error should advance the task's failover state (binding/global paths leave the chain state untouched, preserving existing semantics).
-func (r *taskLLMRuntime) current() (taskLLMSelection, error) {
-	return r.currentFor(context.Background())
-}
-
-// currentFor resolves like current, honoring a per-run profile pin set by the
-// engine for per-intent rotation (#85). A pin is only a dispatch preference:
-// the chain must still be in a ready state (an exhausted chain with no active
-// head stays exhausted) and the pinned id must belong to the task's chain.
+//
+// It also honors a per-run profile pin set by the engine for per-intent
+// rotation (#85). A pin is only a dispatch preference: the chain must still
+// be in a ready state (an exhausted chain with no active head stays
+// exhausted) and the pinned id must belong to the task's chain.
 func (r *taskLLMRuntime) currentFor(ctx context.Context) (taskLLMSelection, error) {
 	taskNum, err := parseTaskID(r.taskID)
 	if err != nil {

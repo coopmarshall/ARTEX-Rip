@@ -93,6 +93,17 @@ func TestCoreTaskLifecyclePG(t *testing.T) {
 	if code != 200 {
 		t.Fatalf("list tasks: %d", code)
 	}
+	tasks, _ := out["tasks"].([]any)
+	found := false
+	for _, raw := range tasks {
+		if tsk, ok := raw.(map[string]any); ok && tsk["id"] == id {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("created task %s not present in /api/tasks list: %v", id, out["tasks"])
+	}
 
 	// The task detail header consumes the top-level engine mode while some clients
 	// read the active-task snapshot. Keep both representations in sync.

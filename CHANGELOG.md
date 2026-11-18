@@ -4,6 +4,12 @@ All notable changes to this project are documented in this file. The format is b
 
 ## [Unreleased]
 
+### staticcheck-driven cleanup
+
+- **Test gap fixed**: `TestCoreTaskLifecyclePG`'s "it shows in the task list" step fetched `/api/tasks` and checked only the HTTP status code — the response body was never actually inspected, so the comment's claim was unverified. Now asserts the created task is actually present in the returned list.
+- Removed two confirmed-dead private functions (`(*taskLLMRuntime).current()`, superseded by `currentFor` taking an explicit context; `enrich.isBlank`, zero callers) and simplified a no-op `fmt.Sprintf("%s", ...)` in `config.Redact`.
+- Set up a local PostgreSQL instance in this dev environment so the full test suite (previously 436 tests skipped for "postgres unavailable") now actually runs end-to-end, including `db/`, `guard/`, and `intercept/`.
+
 ### Security: Markdown injection in report/findings exports
 
 - **Untrusted finding content is now escaped in every Markdown export**: `FindingsMarkdown`, `SingleFindingMarkdown` (findings-page export) and `report.Markdown` (per-task penetration report) interpolated the finding's `Name`/`VulnClass`/`Summary`/verification-note fields — and the per-task report's PoC — raw into Markdown. Those fields come straight from the model's `report_finding` call, itself shaped by whatever the scanned target returned, so a crafted finding title like `[URGENT: verify your account](http://attacker.tld)` rendered as a live clickable link, and `![](http://attacker.tld/beacon)` as an auto-fetched tracking image, in any Markdown viewer the exported file was later opened in (GitHub, VS Code preview, Obsidian, a pasted chat message) — the exact risk the `notify` package's IM channels were already hardened against (`markdownEscape`), just reached through a downloaded file instead of a live push. `DBFinding.Report` (the agent's own authored Markdown report) is deliberately left unescaped, since it is meant to render as Markdown.
