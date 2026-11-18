@@ -253,6 +253,38 @@ func TestTelegramErrorClassification(t *testing.T) {
 	}
 }
 
+// TestSlackEscapeURLRejectsPipeAndAngleBracket covers the one branch no
+// existing Slack test exercises: a DetailURL/HomeURL containing a literal
+// `|` or `>` would end the <url|text> link token early or merge with the
+// display text, so slackEscapeURL rejects it outright (empty string, no
+// link rendered) rather than emitting a mangled token. Everything else
+// must still pass through normally escaped.
+func TestSlackEscapeURLRejectsPipeAndAngleBracket(t *testing.T) {
+	for _, bad := range []string{
+		"https://artex.local/x?a=1|evil",
+		"https://artex.local/x?a=1>evil",
+	} {
+		if got := slackEscapeURL(bad); got != "" {
+			t.Errorf("slackEscapeURL(%q) = %q, want rejected (empty)", bad, got)
+		}
+	}
+	clean := "https://artex.local/findings/42"
+	if got := slackEscapeURL(clean); got != clean {
+		t.Errorf("slackEscapeURL(%q) = %q, want unchanged (no & < > to escape)", clean, got)
+	}
+}
+
+// TestSlackMrkdwnOmitsLinkLineForRejectedURL is the end-to-end counterpart:
+// when DetailURL fails slackEscapeURL, the rendered message must simply omit
+// the "View details" line, not emit a malformed <|View details> token.
+func TestSlackMrkdwnOmitsLinkLineForRejectedURL(t *testing.T) {
+	m := Message{Items: []Item{{Severity: "high", Name: "XSS", DetailURL: "https://artex.local/x?a=1|evil"}}}
+	out, _ := slackMrkdwn(m)
+	if strings.Contains(out, "View details") || strings.Contains(out, "<|") {
+		t.Fatalf("expected the link line to be omitted entirely, got %q", out)
+	}
+}
+
 func TestSlackEscapesMrkdwnLinkInjection(t *testing.T) {
 	var text string
 	srv := capturePost(t, `ok`, func(t *testing.T, body map[string]any, _ *http.Request) {
@@ -567,6 +599,32 @@ func withOpsgenieEndpoint(t *testing.T, url string) {
 
 // TestOpsgeniePriorityMapsEveryBranch covers all five branches directly (the
 // end-to-end Send tests only ever exercise "high" via singleMsg()).
+// TestOpsgenieWorstSeverityAllBranches covers every return path directly:
+// the end-to-end batch tests only ever use batchMsg()'s fixed "medium"
+// severity, never exercising "low" winning, an empty batch, or a batch of
+// entirely unrecognized severities (must default to "low", not panic or
+// pick an arbitrary one).
+func TestOpsgenieWorstSeverityAllBranches(t *testing.T) {
+	sev := func(s string) Item { return Item{Severity: s} }
+	cases := []struct {
+		name  string
+		items []Item
+		want  string
+	}{
+		{"critical wins over everything", []Item{sev("low"), sev("critical"), sev("high")}, "critical"},
+		{"high wins over medium/low", []Item{sev("low"), sev("high"), sev("medium")}, "high"},
+		{"medium wins over low", []Item{sev("low"), sev("medium")}, "medium"},
+		{"low is the worst present", []Item{sev("low"), sev("low")}, "low"},
+		{"empty batch defaults to low", nil, "low"},
+		{"all unrecognized defaults to low", []Item{sev("weird"), sev("")}, "low"},
+	}
+	for _, tc := range cases {
+		if got := opsgenieWorstSeverity(tc.items); got != tc.want {
+			t.Errorf("%s: opsgenieWorstSeverity() = %q, want %q", tc.name, got, tc.want)
+		}
+	}
+}
+
 func TestOpsgeniePriorityMapsEveryBranch(t *testing.T) {
 	cases := []struct{ in, want string }{
 		{"critical", "P1"},

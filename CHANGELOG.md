@@ -4,6 +4,11 @@ All notable changes to this project are documented in this file. The format is b
 
 ## [Unreleased]
 
+### Fresh-eyes pass on this session's own notify channels
+
+- `web/` has no frontend test suite to check (no jest/vitest configured) — confirmed, not a gap to fill here.
+- Added direct tests for three previously-undertested branches in this session's own Slack/Opsgenie code: `slackEscapeURL`'s reject-on-`|`-or-`>` defense (a `DetailURL` containing one of those characters must drop the link line entirely, not emit a malformed `<url|text>` token) and `opsgenieWorstSeverity`'s full branch set (low-wins, empty batch, all-unrecognized-severities, previously only ever exercised at "medium" via the shared `batchMsg()` fixture). All confirmed correct.
+
 ### Coverage sweep: evidence
 
 - Added a direct end-to-end test for `Store.StageFindingsExport` (0% coverage) — the findings-export staging path that freezes a finding's binding/version/report state and, with `copyBodies`, produces real byte-for-byte body copies for the md-zip/report download. Covers both an inline and a blob-spilled exchange, and the `copyBodies=false` case (metadata populated, nothing staged). Confirmed correct.
