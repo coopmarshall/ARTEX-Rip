@@ -4,6 +4,12 @@ All notable changes to this project are documented in this file. The format is b
 
 ## [Unreleased]
 
+### Security: Markdown injection in report/findings exports
+
+- **Untrusted finding content is now escaped in every Markdown export**: `FindingsMarkdown`, `SingleFindingMarkdown` (findings-page export) and `report.Markdown` (per-task penetration report) interpolated the finding's `Name`/`VulnClass`/`Summary`/verification-note fields — and the per-task report's PoC — raw into Markdown. Those fields come straight from the model's `report_finding` call, itself shaped by whatever the scanned target returned, so a crafted finding title like `[URGENT: verify your account](http://attacker.tld)` rendered as a live clickable link, and `![](http://attacker.tld/beacon)` as an auto-fetched tracking image, in any Markdown viewer the exported file was later opened in (GitHub, VS Code preview, Obsidian, a pasted chat message) — the exact risk the `notify` package's IM channels were already hardened against (`markdownEscape`), just reached through a downloaded file instead of a live push. `DBFinding.Report` (the agent's own authored Markdown report) is deliberately left unescaped, since it is meant to render as Markdown.
+- **Evidence/PoC code fences now widen past embedded backticks**: a fixed 3-backtick fence closed early the moment captured evidence contained its own `` ``` ``, dumping the remainder as unescaped, unfenced Markdown; the fence now uses one more backtick than the longest run already inside the content (the standard CommonMark-safe technique).
+- Added test coverage for `report.Markdown`/`parseFinding`, which had none before this session.
+
 ### Findings export
 
 - **SARIF export**: the findings page export dialog gains a `sarif` format (SARIF 2.1.0), so a batch of findings can be ingested by any SARIF-aware viewer or aggregator without a bespoke parser (results carry no file/line location, since ARTEX findings are network/application-layer, not static-analysis hits — not verified against GitHub Code Scanning's own upload endpoint specifically, which may handle location-less results differently). Findings sharing a vulnerability class collapse onto one SARIF rule with many results; POE level, verification status/note, and counterevidence ride along in `result.properties` so they are not dropped by generic viewers.

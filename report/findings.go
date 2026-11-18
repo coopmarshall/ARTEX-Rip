@@ -62,13 +62,13 @@ func verificationLabel(f *db.DBFinding) string {
 func verificationMarkdown(b *strings.Builder, f *db.DBFinding) {
 	fmt.Fprintf(b, "- **Verification**: %s\n", verificationLabel(f))
 	if note := strings.TrimSpace(f.VerificationNote); note != "" {
-		fmt.Fprintf(b, "- **Verification note**: %s\n", note)
+		fmt.Fprintf(b, "- **Verification note**: %s\n", mdEscapeText(note))
 	}
 	if ce := strings.TrimSpace(f.Counterevidence); ce != "" {
-		fmt.Fprintf(b, "- **Counterevidence**: %s\n", ce)
+		fmt.Fprintf(b, "- **Counterevidence**: %s\n", mdEscapeText(ce))
 	}
 	if cr := strings.TrimSpace(f.ConfidenceRationale); cr != "" {
-		fmt.Fprintf(b, "- **Confidence rationale**: %s\n", cr)
+		fmt.Fprintf(b, "- **Confidence rationale**: %s\n", mdEscapeText(cr))
 	}
 }
 
@@ -104,21 +104,22 @@ func FindingsMarkdown(fs []*db.DBFinding, generatedAt time.Time) string {
 
 	b.WriteString("## Vulnerability Details\n\n")
 	for i, f := range items {
-		fmt.Fprintf(&b, "### %d. [%s] %s\n\n", i+1, strings.ToUpper(nz(f.Severity, "info")), findingTitle(f))
+		fmt.Fprintf(&b, "### %d. [%s] %s\n\n", i+1, strings.ToUpper(nz(f.Severity, "info")), mdEscapeText(findingTitle(f)))
 		if f.VulnClass != "" {
-			fmt.Fprintf(&b, "- **Class**: %s\n", f.VulnClass)
+			fmt.Fprintf(&b, "- **Class**: %s\n", mdEscapeText(f.VulnClass))
 		}
 		fmt.Fprintf(&b, "- **Status**: %s\n", nz(f.Status, "pending"))
 		verificationMarkdown(&b, f)
 		if desc := strings.TrimSpace(f.TaskDescription); desc != "" {
-			fmt.Fprintf(&b, "- **Task**: %s\n", desc)
+			fmt.Fprintf(&b, "- **Task**: %s\n", mdEscapeText(desc))
 		}
 		fmt.Fprintf(&b, "- **Found at**: %s\n\n", f.CreatedAt.Format("2006-01-02 15:04:05"))
 		if s := strings.TrimSpace(f.Summary); s != "" {
-			fmt.Fprintf(&b, "%s\n\n", s)
+			fmt.Fprintf(&b, "%s\n\n", mdEscapeText(s))
 		}
 		if e := strings.TrimSpace(f.Evidence); e != "" {
-			fmt.Fprintf(&b, "**Evidence:**\n\n```\n%s\n```\n\n", e)
+			fence := mdCodeFence(e)
+			fmt.Fprintf(&b, "**Evidence:**\n\n%s\n%s\n%s\n\n", fence, e, fence)
 		}
 		if rep := strings.TrimSpace(f.Report); rep != "" {
 			b.WriteString("**Detailed report:**\n\n")
@@ -134,23 +135,24 @@ func FindingsMarkdown(fs []*db.DBFinding, generatedAt time.Time) string {
 // SingleFindingMarkdown renders a single vulnerability as a standalone Markdown (used for "one file per vulnerability" packaging).
 func SingleFindingMarkdown(f *db.DBFinding, generatedAt time.Time) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "# [%s] %s\n\n", strings.ToUpper(nz(f.Severity, "info")), findingTitle(f))
+	fmt.Fprintf(&b, "# [%s] %s\n\n", strings.ToUpper(nz(f.Severity, "info")), mdEscapeText(findingTitle(f)))
 	if f.VulnClass != "" {
-		fmt.Fprintf(&b, "- **Class**: %s\n", f.VulnClass)
+		fmt.Fprintf(&b, "- **Class**: %s\n", mdEscapeText(f.VulnClass))
 	}
 	fmt.Fprintf(&b, "- **Severity**: %s\n", nz(f.Severity, "info"))
 	fmt.Fprintf(&b, "- **Status**: %s\n", nz(f.Status, "pending"))
 	verificationMarkdown(&b, f)
 	if desc := strings.TrimSpace(f.TaskDescription); desc != "" {
-		fmt.Fprintf(&b, "- **Task**: %s\n", desc)
+		fmt.Fprintf(&b, "- **Task**: %s\n", mdEscapeText(desc))
 	}
 	fmt.Fprintf(&b, "- **Found at**: %s\n", f.CreatedAt.Format("2006-01-02 15:04:05"))
 	fmt.Fprintf(&b, "- **Generated at**: %s\n\n", generatedAt.Format("2006-01-02 15:04:05"))
 	if s := strings.TrimSpace(f.Summary); s != "" {
-		fmt.Fprintf(&b, "## Summary\n\n%s\n\n", s)
+		fmt.Fprintf(&b, "## Summary\n\n%s\n\n", mdEscapeText(s))
 	}
 	if e := strings.TrimSpace(f.Evidence); e != "" {
-		fmt.Fprintf(&b, "## Evidence\n\n```\n%s\n```\n\n", e)
+		fence := mdCodeFence(e)
+		fmt.Fprintf(&b, "## Evidence\n\n%s\n%s\n%s\n\n", fence, e, fence)
 	}
 	if rep := strings.TrimSpace(f.Report); rep != "" {
 		b.WriteString("## Detailed Report\n\n")
@@ -233,7 +235,7 @@ func findingTrafficMarkdown(f *db.DBFinding, attachments bool) string {
 	for i, b := range f.TrafficBindings {
 		fmt.Fprintf(&out, "%d. **Evidence #%d · %s** — `%s %s`, status %d\n", i+1, b.ID, b.Role, b.Snapshot.Method, strings.ReplaceAll(b.Snapshot.URL, "`", "%60"), b.Snapshot.Status)
 		if b.Note != "" {
-			fmt.Fprintf(&out, "   %s\n", strings.ReplaceAll(b.Note, "\n", "\n   "))
+			fmt.Fprintf(&out, "   %s\n", strings.ReplaceAll(mdEscapeText(b.Note), "\n", "\n   "))
 		}
 		if attachments {
 			fmt.Fprintf(&out, "   [Request message](evidence/%d/%d/request.http) · [Response message](evidence/%d/%d/response.http)\n", f.ID, b.ID, f.ID, b.ID)

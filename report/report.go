@@ -80,10 +80,18 @@ func Markdown(in Input) string {
 		}
 		sort.SliceStable(fs, func(i, j int) bool { return sevRank[fs[i].Severity] < sevRank[fs[j].Severity] })
 		for i, f := range fs {
-			fmt.Fprintf(&b, "### %d. [%s] %s\n\n", i+1, strings.ToUpper(nz(f.Severity, "info")), nz(f.Name, nz(f.VulnClass, "Uncategorized")))
-			fmt.Fprintf(&b, "%s\n\n", nz(f.Summary, ""))
+			// Name/VulnClass/Summary/PoC come straight from the model's
+			// report_finding call, itself shaped by whatever the scanned
+			// target returned — untrusted, same as the IM channels' finding
+			// titles (see mdEscapeText). Unlike FindingsMarkdown there is no
+			// separate "written-as-Markdown" report field here to leave
+			// unescaped; everything in findingView is plain text.
+			title := mdEscapeText(nz(f.Name, nz(f.VulnClass, "Uncategorized")))
+			fmt.Fprintf(&b, "### %d. [%s] %s\n\n", i+1, strings.ToUpper(nz(f.Severity, "info")), title)
+			fmt.Fprintf(&b, "%s\n\n", mdEscapeText(nz(f.Summary, "")))
 			if f.PoC != "" {
-				fmt.Fprintf(&b, "**PoC / Evidence:**\n\n```\n%s\n```\n\n", f.PoC)
+				fence := mdCodeFence(f.PoC)
+				fmt.Fprintf(&b, "**PoC / Evidence:**\n\n%s\n%s\n%s\n\n", fence, f.PoC, fence)
 			}
 		}
 	}

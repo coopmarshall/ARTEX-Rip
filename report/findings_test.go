@@ -153,3 +153,71 @@ func TestFindingsMarkdownOmitsEmptyVerificationDetails(t *testing.T) {
 		}
 	}
 }
+
+// TestFindingsMarkdownEscapesUntrustedFieldsButNotReport is the end-to-end
+// regression for the Markdown-injection gap: Name/VulnClass/Summary come
+// straight from the model's report_finding call, shaped by whatever the
+// scanned target returned, so a crafted title must not survive as a live
+// link/image in whatever Markdown viewer the exported .md is later opened
+// in. DBFinding.Report, by contrast, is the agent's own authored Markdown
+// report and must render verbatim — escaping it would turn its intended
+// headings/emphasis into visible backslash litter.
+func TestFindingsMarkdownEscapesUntrustedFieldsButNotReport(t *testing.T) {
+	f := &db.DBFinding{
+		ID:        1,
+		Name:      "XSS\n[URGENT: verify your account](http://attacker.tld)",
+		VulnClass: "![beacon](http://attacker.tld/b.png)",
+		Severity:  "high",
+		Summary:   "clicking *here* triggers the payload",
+		Report:    "## Root cause\n\nThe `id` parameter is not sanitized.",
+		CreatedAt: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+	}
+	now := time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC)
+
+	for name, out := range map[string]string{
+		"FindingsMarkdown":      FindingsMarkdown([]*db.DBFinding{f}, now),
+		"SingleFindingMarkdown": SingleFindingMarkdown(f, now),
+	} {
+		if strings.Contains(out, "](http://attacker.tld)") {
+			t.Errorf("%s: link injection from Name not neutralized:\n%s", name, out)
+		}
+		if strings.Contains(out, "![beacon](http://attacker.tld/b.png)") {
+			t.Errorf("%s: image/beacon injection from VulnClass not neutralized:\n%s", name, out)
+		}
+		if strings.Contains(out, "clicking *here* triggers") {
+			t.Errorf("%s: emphasis injection from Summary not neutralized:\n%s", name, out)
+		}
+		// The agent's own authored report must render verbatim, unescaped.
+		if !strings.Contains(out, "## Root cause") || !strings.Contains(out, "The `id` parameter is not sanitized.") {
+			t.Errorf("%s: Report field was altered, should render verbatim:\n%s", name, out)
+		}
+	}
+}
+
+// TestFindingsMarkdownEvidenceFenceSurvivesEmbeddedBackticks covers the
+// code-fence breakout: untrusted Evidence containing its own "```" must not
+// be able to close the fence early and leak the remainder as live Markdown.
+func TestFindingsMarkdownEvidenceFenceSurvivesEmbeddedBackticks(t *testing.T) {
+	f := &db.DBFinding{
+		ID:        2,
+		Name:      "RCE",
+		Severity:  "critical",
+		Evidence:  "captured response:\n```\nmalicious payload\n```\n[click me](http://attacker.tld)",
+		CreatedAt: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+	}
+	out := SingleFindingMarkdown(f, time.Now())
+	// The embedded "[click me](...)" sits inside what must still be fenced
+	// code; it should appear verbatim as code, not escaped (fences protect
+	// content without needing character escaping) but must not have become
+	// live Markdown by escaping out of the block early.
+	idx := strings.Index(out, "[click me](http://attacker.tld)")
+	if idx < 0 {
+		t.Fatalf("evidence content missing from output:\n%s", out)
+	}
+	// Everything up to and including that text must still be inside a fence
+	// opened with 4+ backticks (mdCodeFence's answer for a body containing a
+	// run of 3).
+	if !strings.Contains(out[:idx], "````") {
+		t.Fatalf("evidence fence was not widened past the embedded ``` run:\n%s", out)
+	}
+}
