@@ -56,3 +56,57 @@ func TestSkillTools(t *testing.T) {
 		t.Fatal("path traversal should be rejected")
 	}
 }
+
+func TestToDBToolDefaultsEnabledAndMapsEveryField(t *testing.T) {
+	trueVal := true
+	in := customToolToolInput{
+		Key: "my_tool", Description: "does a thing", Kind: "command",
+		Exec: json.RawMessage(`{"command":"ls"}`), Schema: json.RawMessage(`{"type":"object"}`),
+		Agents: []string{"a", "b"}, Deferred: true, Enabled: &trueVal,
+	}
+	out := toDBTool(in)
+	if out.Key != in.Key || out.Description != in.Description || out.Kind != in.Kind ||
+		string(out.Exec) != string(in.Exec) || string(out.Schema) != string(in.Schema) ||
+		len(out.Agents) != 2 || out.Deferred != true || out.Enabled != true || out.System {
+		t.Fatalf("toDBTool dropped or mismapped a field: %+v", out)
+	}
+
+	// Enabled is nil (field omitted by the caller) -> defaults to true, not
+	// the zero value false, so a tool isn't silently created disabled.
+	out2 := toDBTool(customToolToolInput{Key: "k", Kind: "shell"})
+	if !out2.Enabled {
+		t.Fatal("toDBTool with Enabled=nil should default to enabled=true")
+	}
+
+	// Enabled explicitly false must be respected, not overridden by the
+	// default.
+	falseVal := false
+	out3 := toDBTool(customToolToolInput{Key: "k", Kind: "shell", Enabled: &falseVal})
+	if out3.Enabled {
+		t.Fatal("toDBTool with Enabled=false should stay disabled")
+	}
+}
+
+func TestCoalesceStr(t *testing.T) {
+	fallback := "fallback"
+	if got := coalesceStr(nil, fallback); got != fallback {
+		t.Errorf("coalesceStr(nil, ...) = %q, want %q", got, fallback)
+	}
+	empty := ""
+	if got := coalesceStr(&empty, fallback); got != "" {
+		t.Errorf("coalesceStr(&\"\", ...) = %q, want empty string (only nil falls back)", got)
+	}
+	val := "value"
+	if got := coalesceStr(&val, fallback); got != val {
+		t.Errorf("coalesceStr(&val, ...) = %q, want %q", got, val)
+	}
+}
+
+func TestEnabledWord(t *testing.T) {
+	if enabledWord(true) != "enabled" {
+		t.Error("enabledWord(true) should be \"enabled\"")
+	}
+	if enabledWord(false) != "disabled" {
+		t.Error("enabledWord(false) should be \"disabled\"")
+	}
+}

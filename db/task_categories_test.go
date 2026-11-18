@@ -181,3 +181,32 @@ func TestSetTasksCategoryRejectsBadInputAtomically(t *testing.T) {
 		t.Fatalf("rejected batch mutated task: %+v", loaded)
 	}
 }
+
+func TestNormalizeTaskCategoryNameCollapsesWhitespaceAndLowercasesKey(t *testing.T) {
+	name, nkey, err := normalizeTaskCategoryName("  Web   App  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if name != "Web App" {
+		t.Errorf("name = %q, want %q (internal runs of whitespace collapsed, edges trimmed)", name, "Web App")
+	}
+	if nkey != "web app" {
+		t.Errorf("nkey = %q, want %q (lowercased for case-insensitive uniqueness)", nkey, "web app")
+	}
+}
+
+func TestNormalizeTaskCategoryNameRejectsWhitespaceOnly(t *testing.T) {
+	if _, _, err := normalizeTaskCategoryName("   "); !errors.Is(err, ErrTaskCategoryInvalid) {
+		t.Fatalf("whitespace-only name: err = %v, want ErrTaskCategoryInvalid", err)
+	}
+}
+
+func TestNormalizeTaskCategoryNameRejectsOverMaxRunes(t *testing.T) {
+	if _, _, err := normalizeTaskCategoryName(strings.Repeat("a", MaxTaskCategoryNameRunes+1)); !errors.Is(err, ErrTaskCategoryInvalid) {
+		t.Fatalf("over-length name: err = %v, want ErrTaskCategoryInvalid", err)
+	}
+	// Exactly at the limit must be accepted.
+	if _, _, err := normalizeTaskCategoryName(strings.Repeat("a", MaxTaskCategoryNameRunes)); err != nil {
+		t.Fatalf("name at exactly the limit should be accepted, got %v", err)
+	}
+}

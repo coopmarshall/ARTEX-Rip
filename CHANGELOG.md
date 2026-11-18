@@ -4,6 +4,10 @@ All notable changes to this project are documented in this file. The format is b
 
 ## [Unreleased]
 
+### Coverage sweep: platform tool mapping and task category normalization
+
+- Added unit tests for `toDBTool`/`coalesceStr`/`enabledWord` (server/platform_tools.go) and `normalizeTaskCategoryName` (db/task_categories.go), all previously 0% or only incidentally covered. All confirmed correct: `toDBTool` maps every field one-to-one and defaults a nil `Enabled` to true without overriding an explicit false; `normalizeTaskCategoryName` collapses internal whitespace runs and trims edges before storage while deriving a lowercased key for case-insensitive uniqueness. Also hand-traced and ruled out a suspected bug: `decodeTaskCategoryRequest` validates against the trimmed name but passes the raw string onward -- not a problem, because `normalizeTaskCategoryName` re-normalizes it again at the DB layer before storage or the uniqueness check.
+
 ### Coverage sweep: workspace file manager
 
 - Added `server/workspace_test.go` for `wsResolve`/`wsRel`/`sanitizeFilename` (0% coverage before this), the path-confinement boundary behind every `/api/workspace/*` route. Confirmed correct: `..` traversal is neutralized regardless of depth, leading/trailing whitespace and slashes are tolerated, and `sanitizeFilename` strips the characters that would otherwise let an uploaded filename break out of the `Content-Disposition` header's quoted value or inject a CRLF. Noted but did not change: `wsRel` itself doesn't re-validate that its input is inside the root, so it would render an outside path as an escaping `../` relative path -- not reachable today since every caller only ever passes a path that already came from `wsResolve`, but undefended at this layer if that invariant ever breaks.
