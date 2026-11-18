@@ -321,6 +321,81 @@ func TestSlackReportsRealStatusCodes(t *testing.T) {
 	}
 }
 
+func TestDiscordSuppressesMentionsAndEscapesMarkdown(t *testing.T) {
+	var body map[string]any
+	srv := capturePost(t, `{}`, func(t *testing.T, b map[string]any, _ *http.Request) {
+		body = b
+	})
+	m := Message{Items: []Item{{
+		Severity: "high",
+		// Untrusted content (model output / target response) trying to ping
+		// the whole server via a literal mention token.
+		Name:    "RCE @everyone <@&123456> go look now",
+		Summary: "uses * and _ and ~ and | formatting chars",
+	}}}
+	if _, err := (discordChannel{}).Send(context.Background(), map[string]any{"webhook": srv.URL}, m); err != nil {
+		t.Fatalf("delivery failed: %v", err)
+	}
+	allowed, ok := body["allowed_mentions"].(map[string]any)
+	if !ok {
+		t.Fatalf("allowed_mentions missing from payload: %v", body)
+	}
+	parse, _ := allowed["parse"].([]any)
+	if len(parse) != 0 {
+		t.Fatalf("allowed_mentions.parse should be empty (suppress everything), got %v", parse)
+	}
+	content, _ := body["content"].(string)
+	// The mention text itself is still visible (Discord's allowed_mentions
+	// only controls whether it *pings*, not whether it renders), but markdown
+	// metacharacters from untrusted content must be neutralized.
+	if !strings.Contains(content, "@everyone") {
+		t.Fatalf("mention text unexpectedly stripped: %q", content)
+	}
+	if strings.Contains(content, "uses * and") {
+		t.Fatalf("markdown metacharacters not escaped: %q", content)
+	}
+}
+
+func TestDiscordTruncatesToContentLimit(t *testing.T) {
+	var content string
+	srv := capturePost(t, `{}`, func(t *testing.T, b map[string]any, _ *http.Request) {
+		content, _ = b["content"].(string)
+	})
+	// Build a batch long enough to definitely exceed the 2000-character limit.
+	m := batchMsg(200)
+	if _, err := (discordChannel{}).Send(context.Background(), map[string]any{"webhook": srv.URL}, m); err != nil {
+		t.Fatalf("delivery failed: %v", err)
+	}
+	if n := utf8.RuneCountInString(content); n > discordTextLimit {
+		t.Fatalf("content %d runes exceeds Discord's %d limit", n, discordTextLimit)
+	}
+	if content == "" {
+		t.Fatal("content is empty")
+	}
+}
+
+func TestDiscordReportsRealStatusCodes(t *testing.T) {
+	rateLimited := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusTooManyRequests)
+		_, _ = io.WriteString(w, `{"message":"rate limited","retry_after":1.0}`)
+	}))
+	t.Cleanup(rateLimited.Close)
+	_, err := (discordChannel{}).Send(context.Background(), map[string]any{"webhook": rateLimited.URL}, singleMsg())
+	if err == nil || IsPermanent(err) {
+		t.Fatalf("429 should be retryable, got %v", err)
+	}
+
+	notFound := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = io.WriteString(w, `{"message":"Unknown Webhook","code":10015}`)
+	}))
+	t.Cleanup(notFound.Close)
+	_, err = (discordChannel{}).Send(context.Background(), map[string]any{"webhook": notFound.URL}, singleMsg())
+	if err == nil || !IsPermanent(err) {
+		t.Fatalf("404 (unknown webhook) is a configuration error, should be permanent, got %v", err)
+	}
+}
+
 func TestWebhookDefaultTemplateProducesValidJSON(t *testing.T) {
 	// This case is the whole point of the default template: when the title
 	// contains quotes and newlines, any naive `"title": "{{.Title}}"` produces
@@ -496,6 +571,7 @@ func TestChannelValidateReportsMissingFields(t *testing.T) {
 		{KindTelegram, map[string]any{}, "Bot Token"},
 		{KindTelegram, map[string]any{"bot_token": "t"}, "Chat ID"},
 		{KindSlack, map[string]any{}, "Webhook"},
+		{KindDiscord, map[string]any{}, "Webhook"},
 		{KindEmail, map[string]any{}, "SMTP"},
 		{KindEmail, map[string]any{"host": "h"}, "port"},
 		{KindEmail, map[string]any{"host": "h", "port": 587, "from": "f"}, "recipient"},
@@ -550,9 +626,9 @@ func TestEmailSMTPErrorClassification(t *testing.T) {
 }
 
 func TestRegistryCoversAllKinds(t *testing.T) {
-	// All seven channels are required — a missing one would silently vanish from
+	// All eight channels are required — a missing one would silently vanish from
 	// the UI dropdown.
-	want := []string{KindDingTalk, KindEmail, KindFeishu, KindSlack, KindTelegram, KindWebhook, KindWeCom}
+	want := []string{KindDingTalk, KindDiscord, KindEmail, KindFeishu, KindSlack, KindTelegram, KindWebhook, KindWeCom}
 	got := Kinds()
 	if len(got) != len(want) {
 		t.Fatalf("channel count should be %d, got %d: %v", len(want), len(got), got)

@@ -27,6 +27,7 @@ const (
 	KindTelegram = "telegram" // Telegram Bot API
 	KindEmail    = "email"    // SMTP email
 	KindSlack    = "slack"    // Slack Incoming Webhook
+	KindDiscord  = "discord"  // Discord webhook
 )
 
 // Event kinds, corresponding to notification_events.kind.

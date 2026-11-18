@@ -7,6 +7,7 @@ All notable changes to this project are documented in this file. The format is b
 ### Notifications
 
 - **Slack channel**: a `slack` notification channel (Incoming Webhook) alongside DingTalk/Feishu/WeCom/Webhook/Telegram/Email, with the same severity filters, digest batching and rate limiting as the others. Untrusted content (finding titles/summaries) is escaped against Slack mrkdwn link injection (`<url|text>`) the same way Telegram escapes HTML.
+- **Discord channel**: a `discord` notification channel (webhook), content capped at Discord's 2000-character limit, markdown-escaped against untrusted finding content, and sent with `allowed_mentions: {parse: []}` so a scanned target's response cannot forge an `@everyone`/`@here`/role ping through a finding title.
 
 ### New skills
 

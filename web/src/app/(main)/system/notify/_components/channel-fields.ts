@@ -12,6 +12,7 @@ export const KIND_LABEL: Record<string, string> = {
   telegram: "Telegram",
   email: "Email",
   slack: "Slack",
+  discord: "Discord",
 };
 
 // Config field definitions per channel.
@@ -94,6 +95,15 @@ export const CHANNEL_FIELDS: Record<string, FieldDef[]> = {
       kind: "text",
       placeholder: "https://hooks.slack.com/services/T000/B000/XXXXXXXX",
       help: "Create one under the target channel: Slack App settings → Incoming Webhooks",
+    },
+  ],
+  discord: [
+    {
+      key: "webhook",
+      label: "Webhook URL",
+      kind: "text",
+      placeholder: "https://discord.com/api/webhooks/000/xxxxxxxx",
+      help: "Create one under Server Settings → Integrations → Webhooks on the target channel",
     },
   ],
   telegram: [
