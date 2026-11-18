@@ -124,6 +124,15 @@ var htmlReportTemplate = template.Must(template.New("findings").Parse(`<!doctype
   .sev-high { color: #d2691e; }
   .sev-medium { color: #b8860b; }
   .sev-low { color: #2e6da4; }
+  @media print {
+    /* There is no native PDF export; printing this page (Ctrl/Cmd+P -> Save as PDF)
+       is the supported path, so it needs to look right as a document, not a webpage. */
+    * { -webkit-print-color-adjust: exact; print-color-adjust: exact; color-adjust: exact; }
+    body { margin: 0; max-width: none; }
+    .finding { page-break-inside: avoid; border-color: #999; }
+    h2 { page-break-after: avoid; }
+    pre { white-space: pre-wrap; }
+  }
 </style>
 </head>
 <body>

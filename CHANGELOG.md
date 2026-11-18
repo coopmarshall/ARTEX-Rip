@@ -4,6 +4,11 @@ All notable changes to this project are documented in this file. The format is b
 
 ## [Unreleased]
 
+### New: print stylesheet for the HTML findings export
+
+- Checked that this session's notify channels (Slack/Discord/PagerDuty/Opsgenie) have matching frontend config UI -- confirmed already correctly wired (the kind selector and field table are both data-driven, not hardcoded per channel, so a new backend channel only needed a `CHANNEL_FIELDS`/`KIND_LABEL` entry, which was already present).
+- There is no native PDF export; the supported path to a PDF is the browser's own Print -> Save as PDF on the HTML export. Added an `@media print` stylesheet so that actually looks right: `page-break-inside: avoid` keeps a finding from splitting across a page boundary, and `print-color-adjust: exact` (plus vendor-prefixed) stops Chrome's default behavior of stripping CSS background colors on print, which would otherwise make the severity bar chart invisible on the printed/PDF version.
+
 ### New: severity bar chart in the HTML findings export
 
 - The HTML export's severity summary table now shows a small horizontal bar per severity, scaled relative to the largest count shown, so the mix is readable at a glance instead of requiring a reader to compare four numbers. Pure CSS (a width-percent `<span>`), no new dependency, no JavaScript. Handles the zero-findings case (all bars render at 0% width, no division-by-zero).

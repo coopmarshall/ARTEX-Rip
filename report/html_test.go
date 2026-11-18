@@ -132,6 +132,23 @@ func TestFindingsHTMLSeverityBarsScaleToTheLargestCount(t *testing.T) {
 	}
 }
 
+// TestFindingsHTMLHasPrintStylesheet covers the only path to a PDF-like
+// document (browser Print -> Save as PDF, there being no native PDF
+// export): page breaks must not split a finding block, and print color
+// adjustment must be forced on so the severity bars don't vanish (Chrome
+// drops CSS background colors on print by default).
+func TestFindingsHTMLHasPrintStylesheet(t *testing.T) {
+	out, err := FindingsHTML(nil, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"@media print", "page-break-inside: avoid", "print-color-adjust: exact"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("expected %q in the stylesheet, not found", want)
+		}
+	}
+}
+
 func TestFindingsHTMLSeverityBarsAllZeroWhenNoFindings(t *testing.T) {
 	out, err := FindingsHTML(nil, time.Now())
 	if err != nil {
