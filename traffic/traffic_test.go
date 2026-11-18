@@ -26,6 +26,37 @@ func TestRequestHeaderLinesIncludesHost(t *testing.T) {
 	}
 }
 
+// TestPathWithinRejectsTraversal covers pathWithin's one job: it is the
+// gate RecoverHostDeleteStages checks before trusting a path recorded in a
+// crash-recovery journal (traffic.go, "traffic staging journal contains an
+// out-of-bounds path"), so a bug here would let a corrupted or tampered
+// journal move a file outside the intended directory during recovery.
+func TestPathWithinRejectsTraversal(t *testing.T) {
+	root := t.TempDir()
+	cases := []struct {
+		name      string
+		candidate string
+		want      bool
+	}{
+		{"the root itself", root, true},
+		{"a direct child", filepath.Join(root, "child"), true},
+		{"a nested descendant", filepath.Join(root, "a", "b", "c"), true},
+		{"parent traversal", filepath.Join(root, "..", "escaped"), false},
+		{"deep parent traversal", filepath.Join(root, "..", "..", "etc", "passwd"), false},
+		{"sibling directory sharing a name prefix", root + "-sibling", false},
+		// A directory whose name literally starts with ".." (not a parent
+		// reference) is a real, valid child and must not be rejected --
+		// pathWithin's HasPrefix check is on ".."+separator specifically so
+		// this does not false-positive.
+		{"child name literally starting with ..", filepath.Join(root, "..foo"), true},
+	}
+	for _, tc := range cases {
+		if got := pathWithin(root, tc.candidate); got != tc.want {
+			t.Errorf("%s: pathWithin(%q, %q) = %v, want %v", tc.name, root, tc.candidate, got, tc.want)
+		}
+	}
+}
+
 // TestDeleteHost verifies the delete contract: rows for hosts containing the
 // substring are removed together with their file trees, non-matching hosts are
 // untouched, and the count is right.

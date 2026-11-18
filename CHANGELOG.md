@@ -4,6 +4,10 @@ All notable changes to this project are documented in this file. The format is b
 
 ## [Unreleased]
 
+### Coverage sweep: traffic
+
+- Added direct tests for `pathWithin` (the traversal gate `RecoverHostDeleteStages` checks before trusting a path recorded in a crash-recovery journal — a bug here would let a corrupted/tampered journal move a file outside the intended directory during recovery) and `splitLegacyEvidence` (the legacy request/response header/body splitter), both previously undertested (75%/0%). Both confirmed correct, including the deliberately-tricky case of a child directory literally named `..foo` (not a parent reference) correctly passing `pathWithin`. Noted but did not act on: `pathWithin` checks paths lexically and does not resolve symlinks, so a symlink planted inside the traffic store pointing outside it would not be caught by this check alone — not fixed, since assessing real exploitability would require tracing the recovery code's actual file-move semantics (it uses `Lstat`, suggesting symlinks may already be handled deliberately elsewhere) more carefully than this session's time budget allows; flagging for a future, more careful look rather than guessing at a fix in this higher-risk package.
+
 ### Coverage sweep: llmpool
 
 - `Pool.Complete` (the non-streaming failover path) had 0% coverage: every existing test only drove `Pool.Stream`, even though `Complete` is a separate implementation of the same failover/health-tripping/chain-exhaustion logic, not built on top of `Stream`. Added the same four-case suite `Stream` already has (failover, breaker-trip, no-failover-on-cancel, chain-exhausted) mirrored onto `Complete` directly; all four confirmed it already matches `Stream`'s behavior correctly.
