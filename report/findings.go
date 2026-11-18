@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/Autumn-27/artex/db"
 )
@@ -178,10 +179,25 @@ func FindingFilename(f *db.DBFinding) string {
 	}
 	// Defensive: strip one more path layer to rule out zip slip.
 	name = path.Base(name)
-	if len(name) > 120 {
-		name = name[:120]
-	}
+	name = truncateFilenameBytes(name, 120)
 	return name + ".md"
+}
+
+// truncateFilenameBytes truncates s to at most max bytes without cutting a
+// multi-byte UTF-8 rune in half. The allowed filename charset includes
+// \p{Han} and \p{L} generally (any Unicode letter, not just ASCII), so a
+// naive s[:max] byte slice can land mid-rune and produce an invalid UTF-8
+// filename — back off to the nearest rune boundary instead, the same
+// technique notify.TruncateBytes uses for the same reason.
+func truncateFilenameBytes(s string, max int) string {
+	if len(s) <= max {
+		return s
+	}
+	cut := max
+	for cut > 0 && !utf8.RuneStart(s[cut]) {
+		cut--
+	}
+	return s[:cut]
 }
 
 // FindingsCSV renders a batch of findings as CSV (with a UTF-8 BOM so Excel detects the encoding correctly).

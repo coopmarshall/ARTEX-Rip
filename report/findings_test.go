@@ -2,9 +2,11 @@ package report
 
 import (
 	"encoding/csv"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/Autumn-27/artex/db"
 )
@@ -260,5 +262,126 @@ func TestFindingsMarkdownEvidenceFenceSurvivesEmbeddedBackticks(t *testing.T) {
 	// run of 3).
 	if !strings.Contains(out[:idx], "````") {
 		t.Fatalf("evidence fence was not widened past the embedded ``` run:\n%s", out)
+	}
+}
+
+// TestFindingTrafficMarkdownCoversStaleAttachmentsAndNoteEscaping exercises
+// the branches go tool cover showed were missing (18.8%): the stale-evidence
+// notice, the attachments-link branch, and — most importantly — that a
+// binding's Note (operator-entered, but rendered the same as every other
+// untrusted field) is actually escaped against Markdown injection, not just
+// that the function runs without panicking.
+func TestFindingTrafficMarkdownCoversStaleAttachmentsAndNoteEscaping(t *testing.T) {
+	f := &db.DBFinding{
+		ID:                    9,
+		Report:                "existing report",
+		EvidenceVersion:       3,
+		ReportEvidenceVersion: 1, // differs from EvidenceVersion -> stale
+		TrafficBindings: []db.FindingTrafficBinding{
+			{
+				ID:   101,
+				Role: "proof",
+				Note: "see [click me](http://attacker.tld) for details",
+				Snapshot: db.TrafficEvidenceSnapshot{
+					Method: "GET", URL: "https://target.example.com/a?x=`1`", Status: 200,
+				},
+			},
+		},
+	}
+
+	withAttachments := findingTrafficMarkdown(f, true)
+	if !strings.Contains(withAttachments, "The evidence has changed") {
+		t.Errorf("stale notice missing:\n%s", withAttachments)
+	}
+	if !strings.Contains(withAttachments, "Request message") || !strings.Contains(withAttachments, "evidence/9/101/") {
+		t.Errorf("attachment links missing:\n%s", withAttachments)
+	}
+	if strings.Contains(withAttachments, "[click me](http://attacker.tld)") {
+		t.Errorf("binding note link injection not escaped:\n%s", withAttachments)
+	}
+	if !strings.Contains(withAttachments, `\[click me\]\(http://attacker.tld\)`) {
+		t.Errorf("expected the note's [ ] ( ) escaped, got:\n%s", withAttachments)
+	}
+	// The URL's backtick must still be neutralized as %60 (pre-existing
+	// inline-code-span defense, unrelated to mdEscapeText) so it cannot
+	// close the single-backtick code span early.
+	if !strings.Contains(withAttachments, "%601%60") {
+		t.Errorf("URL backtick not neutralized:\n%s", withAttachments)
+	}
+
+	withoutAttachments := findingTrafficMarkdown(f, false)
+	if strings.Contains(withoutAttachments, "Request message") {
+		t.Errorf("attachments=false should omit the attachment links:\n%s", withoutAttachments)
+	}
+
+	// Not stale, no bindings -> empty (the function's early-return branch).
+	fresh := &db.DBFinding{ID: 1, EvidenceVersion: 1, ReportEvidenceVersion: 1}
+	if got := findingTrafficMarkdown(fresh, false); got != "" {
+		t.Errorf("no bindings and not stale should render nothing, got %q", got)
+	}
+}
+
+// TestFindingFilenameNeverEscapesTheTargetDirectory is the actual zip-slip
+// regression: a model-reported Name/VulnClass (untrusted, same provenance as
+// every other injection fix this session) must never produce a filename
+// that, once joined with the extraction/zip target directory, resolves
+// outside it.
+func TestFindingFilenameNeverEscapesTheTargetDirectory(t *testing.T) {
+	payloads := []string{
+		"../../etc/passwd",
+		"..\\..\\windows\\system32\\evil.dll",
+		"....//....//etc/passwd",
+		"/etc/passwd",
+		strings.Repeat("../", 20) + "evil",
+	}
+	for _, p := range payloads {
+		f := &db.DBFinding{ID: 1, Name: p, Severity: "high"}
+		name := FindingFilename(f)
+		if strings.ContainsAny(name, `/\`) {
+			t.Errorf("Name=%q: filename %q still contains a path separator", p, name)
+		}
+		joined := filepath.Clean(filepath.Join("/safe/export/dir", name))
+		if !strings.HasPrefix(joined, "/safe/export/dir") {
+			t.Errorf("Name=%q: filename %q escapes the target directory, joined=%q", p, name, joined)
+		}
+	}
+}
+
+// TestFindingFilenameTruncationStaysValidUTF8 is the bug coverage analysis
+// surfaced directly: the allowed filename charset includes any Unicode
+// letter (\p{L}, \p{Han} explicitly), so the old s[:120] byte-slice
+// truncation could cut a multi-byte rune in half and produce an invalid
+// UTF-8 filename. Misaligns the cut point deliberately (varying prefix
+// length) to make sure at least one case would have landed mid-rune under
+// the old code.
+func TestFindingFilenameTruncationStaysValidUTF8(t *testing.T) {
+	for extra := 0; extra < 3; extra++ {
+		name := strings.Repeat("x", extra) + strings.Repeat("漏", 60) // "漏" x60, shifted by 0/1/2 ASCII chars
+		f := &db.DBFinding{ID: 42, Name: name, Severity: "high"}
+		got := FindingFilename(f)
+		if !utf8.ValidString(got) {
+			t.Errorf("extra=%d: truncated filename is not valid UTF-8: %q", extra, got)
+		}
+		if !strings.HasSuffix(got, ".md") {
+			t.Errorf("extra=%d: filename must still end in .md: %q", extra, got)
+		}
+	}
+}
+
+// TestFindingFilenameHandlesAllPunctuationTitle covers a title made entirely
+// of characters the sanitizer strips to "_": the finding id (always a
+// trailing run of digits, never trimmed by the "._" cutset) guarantees the
+// result is never empty even when the title contributes nothing readable.
+func TestFindingFilenameHandlesAllPunctuationTitle(t *testing.T) {
+	f := &db.DBFinding{ID: 7, Name: "???###!!!"}
+	got := FindingFilename(f)
+	if got == "" || got == ".md" {
+		t.Fatalf("an all-punctuation title should still produce a non-empty filename, got %q", got)
+	}
+	if !strings.Contains(got, "7") {
+		t.Fatalf("filename should carry the finding id, got %q", got)
+	}
+	if !strings.HasSuffix(got, ".md") {
+		t.Fatalf("filename should end in .md, got %q", got)
 	}
 }
