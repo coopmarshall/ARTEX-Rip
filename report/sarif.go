@@ -11,18 +11,25 @@ import (
 )
 
 // SARIF (Static Analysis Results Interchange Format, OASIS 2.1.0) export for
-// the findings page, so a vulnerability batch can be ingested directly by
-// code-scanning dashboards (GitHub Code Scanning, GitLab, most SAST/DAST
-// aggregators) that already know how to display a .sarif file, instead of
-// needing a bespoke parser for ARTEX's own JSON shape.
+// the findings page, so a vulnerability batch can be ingested by any
+// SARIF-aware viewer or aggregator without a bespoke parser for ARTEX's own
+// JSON shape.
 //
 // This is a results-only export: ARTEX findings are not tied to a file/line
 // (they are network/application-layer, not static-analysis hits), so
 // `result.locations` is omitted — SARIF 2.1.0 makes it optional for exactly
-// this reason. Everything ARTEX-specific that a generic SARIF viewer would
-// not know how to render (POE level, verification status, counterevidence)
-// still rides along in `result.properties`, which every conformant consumer
-// must preserve even when it does not understand the keys.
+// this reason, and a generic spec-compliant viewer renders such a result
+// fine. Deliberately not claimed here: GitHub Code Scanning's own upload
+// endpoint is pickier in practice about location-less results (they may be
+// accepted but not surface as inline alerts the way a normal CodeQL finding
+// would), and that behavior was not verified against a live GitHub instance
+// before shipping this — do not advertise this export as "drop-in for GitHub
+// Code Scanning" without checking that first.
+//
+// Everything ARTEX-specific that a generic SARIF viewer would not know how
+// to render (POE level, verification status, counterevidence) still rides
+// along in `result.properties`, which every conformant consumer must
+// preserve even when it does not understand the keys.
 
 const sarifSchema = "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json"
 const sarifVersion = "2.1.0"
