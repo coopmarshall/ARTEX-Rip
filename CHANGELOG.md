@@ -4,6 +4,10 @@ All notable changes to this project are documented in this file. The format is b
 
 ## [Unreleased]
 
+### Coverage sweep: mcphttp
+
+- Added `mcphttp/sse_test.go` for `parseSSE` (0% coverage before this), the legacy SSE transport's pure response-frame parser. Confirmed correct: it skips server-to-client notifications/requests, tolerates a missing trailing blank line, ignores malformed frames and non-`data:` fields (comments, `id:`, `event:`, `retry:`), and handles CRLF line endings. Considered and rejected one theoretical SSE-spec deviation (consecutive `data:` lines within one event are concatenated without the spec's `\n` join) as not a real bug for this call site: the payload is always single-line JSON-RPC, and JSON never relies on a preserved literal newline inside a string, so the two join strategies are observably identical here.
+
 ### New: HTML findings export
 
 - Added `html` as a findings-export format (`report/html.go`, `FindingsHTML`) alongside the existing md-single/md-zip/csv/json/sarif options: a single self-contained HTML file (inline CSS, no external assets) with a severity summary table and one section per finding, for sharing or viewing a report without a Markdown renderer. Wired through the export endpoint (`server/server.go`) and the Findings page's export dialog (format radio group, `web/src/lib/api.ts`, `web/src/app/(main)/function/findings/page.tsx`).
