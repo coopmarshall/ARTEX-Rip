@@ -3,6 +3,8 @@ package notify
 import (
 	"fmt"
 	"strings"
+	"sync/atomic"
+	"time"
 	"unicode/utf8"
 )
 
@@ -168,9 +170,29 @@ func assetLine(assets []string, limit int) string {
 // a later lifecycle transition (resolve/close) for the same finding targets
 // the exact alert/incident its original trigger opened instead of the
 // platform treating it as unrelated.
+//
+// findingID == 0 is special-cased to a fresh key every call: it never occurs
+// for a real finding (database ids are assigned starting at 1) and is
+// exactly the id the server's "Test" button sends (see notifyTestMessage) —
+// without this, every test click for the same channel would reuse the same
+// key, which is harmless for PagerDuty (a repeat trigger just restates the
+// still-open test incident, easy to mistake for "nothing happened") and
+// actively breaks Opsgenie (create-alert 409s against an alias whose alert
+// is already open, so the *second* test click on a perfectly valid Opsgenie
+// config fails with a confusing error).
 func alertCorrelationKey(findingID int64) string {
+	if findingID == 0 {
+		// A counter, not just time.Now().UnixNano(): on a platform with a
+		// coarse clock, two rapid test-send clicks could otherwise still
+		// collide on the same nanosecond reading.
+		return fmt.Sprintf("artex-test-%d-%d", time.Now().UnixNano(), testKeySeq.Add(1))
+	}
 	return fmt.Sprintf("artex-finding-%d", findingID)
 }
+
+// testKeySeq disambiguates alertCorrelationKey(0) calls that land in the same
+// clock tick.
+var testKeySeq atomic.Uint64
 
 // itoa is a short alias for strconv.Itoa, used only for assembling display text,
 // to avoid importing strconv everywhere.

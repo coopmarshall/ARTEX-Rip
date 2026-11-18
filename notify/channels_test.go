@@ -584,6 +584,42 @@ func TestOpsgenieStatusChangeRoutesByTerminality(t *testing.T) {
 	}
 }
 
+// TestOpsgenieRepeatedTestSendsDoNotCollide is the end-to-end regression for
+// the bug alertCorrelationKey's findingID==0 special case fixes: the
+// server's "Test" button always sends FindingID 0 (notifyTestMessage), and
+// without a fresh alias per call, a second test click would create-alert
+// against the alias the first click's still-open test alert already holds —
+// which Opsgenie rejects with 409, making a perfectly valid config look
+// broken on the second click.
+func TestOpsgenieRepeatedTestSendsDoNotCollide(t *testing.T) {
+	seen := map[string]bool{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		raw, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(raw, &body)
+		alias, _ := body["alias"].(string)
+		if alias != "" && seen[alias] {
+			// This is exactly the behavior Opsgenie's real API would show:
+			// a second create against an alias with an already-open alert.
+			w.WriteHeader(http.StatusConflict)
+			_, _ = io.WriteString(w, `{"message":"already exists"}`)
+			return
+		}
+		seen[alias] = true
+		w.WriteHeader(http.StatusAccepted)
+		_, _ = io.WriteString(w, `{"result":"ok"}`)
+	}))
+	t.Cleanup(srv.Close)
+	withOpsgenieEndpoint(t, srv.URL)
+
+	testMsg := Message{Items: []Item{{FindingID: 0, Name: "Test message", Severity: "low"}}}
+	for i := 0; i < 3; i++ {
+		if _, err := (opsgenieChannel{}).Send(context.Background(), map[string]any{"api_key": "k"}, testMsg); err != nil {
+			t.Fatalf("test send #%d failed: %v", i+1, err)
+		}
+	}
+}
+
 func TestOpsgenieBatchIsOneAlertNoAlias(t *testing.T) {
 	var body map[string]any
 	calls := 0

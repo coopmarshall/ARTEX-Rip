@@ -158,3 +158,28 @@ func TestTruncateHTMLNeverCutsEntity(t *testing.T) {
 		}
 	}
 }
+
+// TestAlertCorrelationKeyIsStableForRealFindingsButFreshForTests covers the
+// bug this guards against: the server's "Test" button always sends
+// FindingID 0 (see notifyTestMessage), so a naive "key = findingID" would
+// make every test click reuse the exact same key — which 409s a second
+// Opsgenie test against a still-open alert from the first click, and makes a
+// second PagerDuty test look like a no-op (re-triggering the same open
+// incident). Real findings, by contrast, must get the same key every time so
+// a later resolve/close targets the alert/incident the original trigger
+// opened.
+func TestAlertCorrelationKeyIsStableForRealFindingsButFreshForTests(t *testing.T) {
+	if got, want := alertCorrelationKey(42), "artex-finding-42"; got != want {
+		t.Errorf("findingID=42: got %q, want %q", got, want)
+	}
+	if got := alertCorrelationKey(42); got != alertCorrelationKey(42) {
+		t.Errorf("a real finding id must derive the same key every call, got %q and %q", got, alertCorrelationKey(42))
+	}
+	a, b := alertCorrelationKey(0), alertCorrelationKey(0)
+	if a == b {
+		t.Errorf("findingID=0 (the test-send sentinel) must get a fresh key every call, got the same %q twice", a)
+	}
+	if !strings.HasPrefix(a, "artex-test-") || !strings.HasPrefix(b, "artex-test-") {
+		t.Errorf("findingID=0 keys should be clearly distinguishable from real-finding keys, got %q and %q", a, b)
+	}
+}
