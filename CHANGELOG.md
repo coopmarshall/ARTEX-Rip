@@ -4,6 +4,10 @@ All notable changes to this project are documented in this file. The format is b
 
 ## [Unreleased]
 
+### Coverage sweep: workspace file manager
+
+- Added `server/workspace_test.go` for `wsResolve`/`wsRel`/`sanitizeFilename` (0% coverage before this), the path-confinement boundary behind every `/api/workspace/*` route. Confirmed correct: `..` traversal is neutralized regardless of depth, leading/trailing whitespace and slashes are tolerated, and `sanitizeFilename` strips the characters that would otherwise let an uploaded filename break out of the `Content-Disposition` header's quoted value or inject a CRLF. Noted but did not change: `wsRel` itself doesn't re-validate that its input is inside the root, so it would render an outside path as an escaping `../` relative path -- not reachable today since every caller only ever passes a path that already came from `wsResolve`, but undefended at this layer if that invariant ever breaks.
+
 ### Fix: duplicate task/archive ids could appear twice in archive/restore batch order
 
 - `topoTaskIDs` (server/task_archives.go), the topological sort used to order a batch archive/delete/restore request so dependents and sources are processed in a safe order, didn't deduplicate its input: a duplicate id with no incoming edge was queued once per occurrence and so emitted more than once in the output. Found while adding the first unit tests for this previously-0%-covered function (its own doc comment states a robustness goal: "cycles are impossible at creation, but stable fallback keeps a damaged database operable" -- the dedup gap undercut that intent). Reachable via `orderColdTaskArchiveBatch` if two distinct archive rows ever reference the same task_id: `taskToArchive[taskID]` would silently collapse to one archive id, duplicated in the result, while the other archive id's intended position is lost (it still surfaces via the trailing fallback, just unordered). Fixed by deduplicating `ids` at the top of the function; confirmed the new regression test fails against the old code and passes against the fix.
