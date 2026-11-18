@@ -4,6 +4,10 @@ All notable changes to this project are documented in this file. The format is b
 
 ## [Unreleased]
 
+### Coverage sweep: llmpool
+
+- `Pool.Complete` (the non-streaming failover path) had 0% coverage: every existing test only drove `Pool.Stream`, even though `Complete` is a separate implementation of the same failover/health-tripping/chain-exhaustion logic, not built on top of `Stream`. Added the same four-case suite `Stream` already has (failover, breaker-trip, no-failover-on-cancel, chain-exhausted) mirrored onto `Complete` directly; all four confirmed it already matches `Stream`'s behavior correctly.
+
 ### Coverage sweep: llmrec
 
 - Added direct tests for `llmrec.thinkingText` and `Recorder.serializeRequest` (0% coverage each): confirmed both already correct (thinking-param override precedence, tool-schema-to-names-only storage), no bug found this time.

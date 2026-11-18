@@ -368,3 +368,79 @@ func TestExpiredWindowIsClosed(t *testing.T) {
 		t.Fatal("expired window should read as closed")
 	}
 }
+
+// The tests below cover Pool.Complete directly: it mirrors Stream's
+// failover/health-tripping/chain-exhaustion logic but is a separate
+// implementation (not built on top of Stream), and until now nothing in
+// this file ever called p.Complete — every existing test above only drives
+// p.Stream. go tool cover showed Complete at 0%.
+
+func TestCompleteFailsOverToNextMember(t *testing.T) {
+	a, b := failProv("a", 402), okProv("b", "hello")
+	p := New([]*Member{member(1, "a", 10, a), member(2, "b", 5, b)}, NewRegistry(nil, nil))
+
+	msg, _, _, err := p.Complete(context.Background(), llm.CompletionRequest{})
+	if err != nil {
+		t.Fatalf("expected failover to succeed, got %v", err)
+	}
+	if got := msg.Content[0].Text; got != "hello" {
+		t.Fatalf("text = %q, want %q", got, "hello")
+	}
+	if a.calls != 1 || b.calls != 1 {
+		t.Fatalf("calls: a=%d b=%d, want 1/1", a.calls, b.calls)
+	}
+}
+
+// Mirrors TestHardFailureTripsBreakerImmediately for Complete: a 402 must
+// open the breaker so the next Complete call skips that profile entirely.
+func TestCompleteTripsBreakerImmediately(t *testing.T) {
+	a, b := failProv("a", 402), okProv("b", "x")
+	reg := NewRegistry(nil, nil)
+	p := New([]*Member{member(1, "a", 10, a), member(2, "b", 5, b)}, reg)
+
+	_, _, _, _ = p.Complete(context.Background(), llm.CompletionRequest{})
+	if !reg.IsOpen(1) {
+		t.Fatal("402 should have tripped the breaker on the first failure")
+	}
+	_, _, _, _ = p.Complete(context.Background(), llm.CompletionRequest{})
+	if a.calls != 1 {
+		t.Fatalf("tripped profile was called again: calls=%d, want 1", a.calls)
+	}
+	if b.calls != 2 {
+		t.Fatalf("fallback calls=%d, want 2", b.calls)
+	}
+}
+
+// Mirrors TestNoFailoverOnCancel for Complete: a non-failover error (context
+// cancellation) must surface as-is, without trying the next member or
+// counting as a profile failure.
+func TestCompleteNoFailoverOnCancel(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	a := &fakeProv{name: "a", errs: []error{context.Canceled}}
+	b := okProv("b", "x")
+	reg := NewRegistry(nil, nil)
+	p := New([]*Member{member(1, "a", 10, a), member(2, "b", 5, b)}, reg)
+
+	_, _, _, err := p.Complete(ctx, llm.CompletionRequest{})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("err = %v, want context.Canceled", err)
+	}
+	if b.calls != 0 {
+		t.Fatalf("failed over on cancellation (backup calls=%d)", b.calls)
+	}
+	if reg.Get(1).Fails != 0 {
+		t.Fatal("cancellation counted as a profile failure")
+	}
+}
+
+// Mirrors TestExhaustedChainReportsClearly for Complete.
+func TestCompleteExhaustedChainReportsClearly(t *testing.T) {
+	a, b := failProv("a", 402), failProv("b", 402)
+	p := New([]*Member{member(1, "a", 10, a), member(2, "b", 5, b)}, NewRegistry(nil, nil))
+
+	_, _, _, err := p.Complete(context.Background(), llm.CompletionRequest{})
+	if !errors.Is(err, ErrExhausted) {
+		t.Fatalf("err = %v, want it to wrap ErrExhausted", err)
+	}
+}
