@@ -33,6 +33,45 @@ func findingTitle(f *db.DBFinding) string {
 	return nz(f.Name, nz(f.VulnClass, "Uncategorized"))
 }
 
+// verificationLabel renders the same wording as the findings-page verification
+// badge (see the 0.6.0 CHANGELOG entry for "verified findings"), so the
+// Markdown export reads consistently with what a reviewer already saw on the
+// page instead of inventing a second vocabulary for the same five states.
+func verificationLabel(f *db.DBFinding) string {
+	switch f.VerificationStatus {
+	case "verified":
+		return fmt.Sprintf("Verified L%d", f.PoELevel)
+	case "unverified":
+		return "Unverified"
+	case "blocked":
+		return "Blocked"
+	case "false_positive":
+		return "False positive"
+	case "not_assessed", "":
+		return "Not assessed"
+	default:
+		return f.VerificationStatus
+	}
+}
+
+// verificationMarkdown renders the verification line(s) shared by
+// FindingsMarkdown and SingleFindingMarkdown: the badge-equivalent label plus
+// the two optional free-text fields (#193), only when they carry content —
+// a finding predating the verified-findings feature renders just "Not
+// assessed" with no empty bullet points trailing it.
+func verificationMarkdown(b *strings.Builder, f *db.DBFinding) {
+	fmt.Fprintf(b, "- **Verification**: %s\n", verificationLabel(f))
+	if note := strings.TrimSpace(f.VerificationNote); note != "" {
+		fmt.Fprintf(b, "- **Verification note**: %s\n", note)
+	}
+	if ce := strings.TrimSpace(f.Counterevidence); ce != "" {
+		fmt.Fprintf(b, "- **Counterevidence**: %s\n", ce)
+	}
+	if cr := strings.TrimSpace(f.ConfidenceRationale); cr != "" {
+		fmt.Fprintf(b, "- **Confidence rationale**: %s\n", cr)
+	}
+}
+
 // FindingsMarkdown combines a batch of findings into a summary report (summary + grouped by severity,
 // each entry with class/status/owning task/evidence/detailed report).
 func FindingsMarkdown(fs []*db.DBFinding, generatedAt time.Time) string {
@@ -70,6 +109,7 @@ func FindingsMarkdown(fs []*db.DBFinding, generatedAt time.Time) string {
 			fmt.Fprintf(&b, "- **Class**: %s\n", f.VulnClass)
 		}
 		fmt.Fprintf(&b, "- **Status**: %s\n", nz(f.Status, "pending"))
+		verificationMarkdown(&b, f)
 		if desc := strings.TrimSpace(f.TaskDescription); desc != "" {
 			fmt.Fprintf(&b, "- **Task**: %s\n", desc)
 		}
@@ -100,6 +140,7 @@ func SingleFindingMarkdown(f *db.DBFinding, generatedAt time.Time) string {
 	}
 	fmt.Fprintf(&b, "- **Severity**: %s\n", nz(f.Severity, "info"))
 	fmt.Fprintf(&b, "- **Status**: %s\n", nz(f.Status, "pending"))
+	verificationMarkdown(&b, f)
 	if desc := strings.TrimSpace(f.TaskDescription); desc != "" {
 		fmt.Fprintf(&b, "- **Task**: %s\n", desc)
 	}

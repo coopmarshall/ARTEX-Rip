@@ -133,11 +133,11 @@ func FindingsSARIF(fs []*db.DBFinding) []byte {
 			msg = fmt.Sprintf("%s: %s", msg, s)
 		}
 		props := map[string]any{
-			"findingId":  f.ID,
-			"severity":   nz(f.Severity, "info"),
-			"status":     nz(f.Status, "pending"),
-			"foundAt":    f.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
-			"poeLevel":   f.PoELevel,
+			"findingId":    f.ID,
+			"severity":     nz(f.Severity, "info"),
+			"status":       nz(f.Status, "pending"),
+			"foundAt":      f.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+			"poeLevel":     f.PoELevel,
 			"verification": nz(f.VerificationStatus, "not_assessed"),
 		}
 		if note := strings.TrimSpace(f.VerificationNote); note != "" {
