@@ -2278,6 +2278,7 @@ func (s *Server) getFinding(w http.ResponseWriter, r *http.Request) {
 //	scope   = filtered (keep the page filters) | all (everything) | selected (checked ids)
 //	format  = md-single (one combined .md) | md-zip (one .md per vulnerability, zipped)
 //	          | csv | json | sarif (SARIF 2.1.0, for code-scanning dashboards)
+//	          | html (single self-contained file, for viewing/sharing without a Markdown renderer)
 //	ids     = comma-separated finding ids (required when scope=selected)
 //	Filter params severity/status/vulnclass/task_id/q/sort match the list endpoint (used when scope=filtered).
 func (s *Server) findingsExport(w http.ResponseWriter, r *http.Request) {
@@ -2361,6 +2362,14 @@ func (s *Server) findingsExport(w http.ResponseWriter, r *http.Request) {
 	case "sarif":
 		setDownload("application/sarif+json", "findings-"+stamp+".sarif")
 		_, _ = w.Write(report.FindingsSARIF(fs))
+	case "html":
+		html, err := report.FindingsHTML(fs, now)
+		if err != nil {
+			writeErr(w, 500, err.Error())
+			return
+		}
+		setDownload("text/html; charset=utf-8", "findings-"+stamp+".html")
+		_, _ = w.Write([]byte(html))
 	case "json":
 		assets := s.resolveFindingAssets(fs)
 		out := make([]FindingDTO, 0, len(fs))

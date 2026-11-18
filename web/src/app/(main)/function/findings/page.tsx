@@ -262,7 +262,7 @@ export default function FindingsPage() {
   // Export dialog state: scope (current filter / all / selected) × format (single md / per-finding md zip / csv / json / sarif).
   const [exportOpen, setExportOpen] = React.useState(false);
   const [exportScope, setExportScope] = React.useState<"filtered" | "all" | "selected">("filtered");
-  const [exportFormat, setExportFormat] = React.useState<"md-single" | "md-zip" | "csv" | "json" | "sarif">(
+  const [exportFormat, setExportFormat] = React.useState<"md-single" | "md-zip" | "csv" | "json" | "sarif" | "html">(
     "md-single",
   );
   const [exporting, setExporting] = React.useState(false);
@@ -1291,6 +1291,9 @@ export default function FindingsPage() {
                 </label>
                 <label htmlFor="export-format-sarif" className="flex items-center gap-2 text-sm">
                   <RadioGroupItem id="export-format-sarif" value="sarif" /> SARIF (.sarif, for code-scanning dashboards)
+                </label>
+                <label htmlFor="export-format-html" className="flex items-center gap-2 text-sm">
+                  <RadioGroupItem id="export-format-html" value="html" /> HTML (single file, no Markdown renderer needed)
                 </label>
               </RadioGroup>
             </div>

@@ -4,6 +4,11 @@ All notable changes to this project are documented in this file. The format is b
 
 ## [Unreleased]
 
+### New: HTML findings export
+
+- Added `html` as a findings-export format (`report/html.go`, `FindingsHTML`) alongside the existing md-single/md-zip/csv/json/sarif options: a single self-contained HTML file (inline CSS, no external assets) with a severity summary table and one section per finding, for sharing or viewing a report without a Markdown renderer. Wired through the export endpoint (`server/server.go`) and the Findings page's export dialog (format radio group, `web/src/lib/api.ts`, `web/src/app/(main)/function/findings/page.tsx`).
+- Unlike the Markdown/CSV exports, which need manual escaping (`mdEscapeText`, `csvFormulaGuard`, both added earlier this session), this format uses Go's `html/template`, which auto-escapes every interpolated field by construction — verified with the same injection-style payloads used to confirm the Markdown fix, now targeting `<script>`/attribute-breakout instead of link/image injection. `DBFinding.Report` (the agent's own Markdown) is deliberately rendered as literal text in a `<pre>`, not converted to live HTML.
+
 ### Fix: quoted "and"/"or" in the asset search DSL
 
 - `db/asset_dsl.go` (the asset-search query language parser, no dedicated test file existed before this session) checked every bare-text token against the AND/OR keywords case-insensitively, including tokens that had been explicitly quoted — so a user searching for the literal word "and" or "or" (e.g. a page titled `"Terms and Conditions"`, searched as `"and"`) got a flat `DSL syntax error: unexpected token 'AND'` instead of a text search, with no way to escape it even though quoting exists for exactly this purpose. Found while adding a test file for this previously-untested parser (`ValidateDSL`/`CountDSL` had 0% coverage) and confirmed reproducible before fixing. The tokenizer now only applies AND/OR keyword interpretation to unquoted tokens.
