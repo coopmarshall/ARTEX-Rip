@@ -107,20 +107,31 @@ func tokenize(s string) ([]tok, error) {
 				i = end
 				continue
 			}
+			// Quoting must be able to escape AND/OR keyword interpretation —
+			// a user who writes "and" or "or" wants a literal bare-text
+			// search for that word (e.g. a page titled "Terms and
+			// Conditions"), not the logical operator. Decide before reading
+			// the token, since readToken strips the quotes from its result.
+			quoted := s[i] == '"'
 			word, end := readToken(s, i)
 			if word == "" {
 				i++
 				continue
 			}
-			switch strings.ToUpper(word) {
-			case "AND":
-				tokens = append(tokens, tok{kind: tkAnd})
-			case "OR":
-				tokens = append(tokens, tok{kind: tkOr})
-			default:
-				e := Expr{Field: "", Op: "=", Value: word}
-				tokens = append(tokens, tok{kind: tkBare, expr: &e})
+			if !quoted {
+				switch strings.ToUpper(word) {
+				case "AND":
+					tokens = append(tokens, tok{kind: tkAnd})
+					i = end
+					continue
+				case "OR":
+					tokens = append(tokens, tok{kind: tkOr})
+					i = end
+					continue
+				}
 			}
+			e := Expr{Field: "", Op: "=", Value: word}
+			tokens = append(tokens, tok{kind: tkBare, expr: &e})
 			i = end
 		}
 	}

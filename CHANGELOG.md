@@ -4,6 +4,10 @@ All notable changes to this project are documented in this file. The format is b
 
 ## [Unreleased]
 
+### Fix: quoted "and"/"or" in the asset search DSL
+
+- `db/asset_dsl.go` (the asset-search query language parser, no dedicated test file existed before this session) checked every bare-text token against the AND/OR keywords case-insensitively, including tokens that had been explicitly quoted — so a user searching for the literal word "and" or "or" (e.g. a page titled `"Terms and Conditions"`, searched as `"and"`) got a flat `DSL syntax error: unexpected token 'AND'` instead of a text search, with no way to escape it even though quoting exists for exactly this purpose. Found while adding a test file for this previously-untested parser (`ValidateDSL`/`CountDSL` had 0% coverage) and confirmed reproducible before fixing. The tokenizer now only applies AND/OR keyword interpretation to unquoted tokens.
+
 ### Fresh-eyes pass on this session's own notify channels
 
 - `web/` has no frontend test suite to check (no jest/vitest configured) — confirmed, not a gap to fill here.
