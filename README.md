@@ -70,6 +70,27 @@ Sync asset data directly from [ScopeSentry](https://github.com/Autumn-27/ScopeSe
 - Choose the targets and asset types to sync by **project** or **task** (domains / subdomains / IPs / ports / sites / endpoints…);
 - One-click import, merged by company asset scope, straight into ARTEX's asset graph for agents to explore.
 
+## Findings export
+
+From the Findings page's **Export** dialog, a batch of findings can be downloaded as:
+
+- **Markdown** — one combined file, or one file per vulnerability (zipped);
+- **CSV** / **JSON** — for spreadsheets or custom tooling;
+- **SARIF 2.1.0** — for ingestion by SARIF-aware viewers and aggregators;
+- **HTML** — a single self-contained report (inline CSS, a severity bar chart, no external assets) for sharing or viewing without a Markdown renderer. It also includes a print stylesheet, so browser Print → Save as PDF produces a clean document — there is no separate native PDF export.
+
+All formats carry each finding's verification state (PoE level, verification status/note, counterevidence, confidence rationale) alongside the usual severity/summary/evidence fields.
+
+## Notifications
+
+System → Notifications supports tiered (realtime/digest), rate-limited alerts on findings and status changes through:
+
+- **Chat**: DingTalk, Feishu, WeCom, Slack, Discord, Telegram, generic Webhook (custom body template);
+- **On-call**: PagerDuty and Opsgenie (Events/Alert API), with status changes closing the original incident/alert instead of leaving it open;
+- **Email** (SMTP).
+
+Each channel supports per-channel severity/keyword/task/asset filters and its own rate limit.
+
 ---
 
 ## Installation
