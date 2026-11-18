@@ -257,6 +257,50 @@ func TestPrepareConfigUpdateAllowsLegitimateEdits(t *testing.T) {
 			stored:   map[string]any{"host": "smtp.corp.com", "port": 587, "password": "PW", "from": "a@b.c", "to": []any{"x@y.z"}},
 			incoming: map[string]any{"to": []any{"new@y.z"}},
 		},
+		// WeCom/Slack/Discord/PagerDuty/Opsgenie all share one field as both the
+		// destination and the entire credential (see each channel's
+		// SecretKeys/DestinationKeys doc comment). For these, "changing the
+		// address" and "providing a new credential" are the same act by
+		// construction — there is no separate stale credential that could leak
+		// to a new address, so a brand new raw value must be accepted outright,
+		// with no "please also re-fill the credential" error (there is nothing
+		// else to re-fill).
+		{
+			name:     "WeCom: pasting a brand new webhook URL",
+			kind:     KindWeCom,
+			stored:   map[string]any{"webhook": "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=OLD"},
+			incoming: map[string]any{"webhook": "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=NEW"},
+		},
+		{
+			name:     "Slack: pasting a brand new webhook URL",
+			kind:     KindSlack,
+			stored:   map[string]any{"webhook": "https://hooks.slack.com/services/OLD"},
+			incoming: map[string]any{"webhook": "https://hooks.slack.com/services/NEW"},
+		},
+		{
+			name:     "Discord: pasting a brand new webhook URL",
+			kind:     KindDiscord,
+			stored:   map[string]any{"webhook": "https://discord.com/api/webhooks/OLD"},
+			incoming: map[string]any{"webhook": "https://discord.com/api/webhooks/NEW"},
+		},
+		{
+			name:     "PagerDuty: pasting a brand new routing key",
+			kind:     KindPagerDuty,
+			stored:   map[string]any{"routing_key": "OLD-KEY"},
+			incoming: map[string]any{"routing_key": "NEW-KEY"},
+		},
+		{
+			name:     "Opsgenie: pasting a brand new API key",
+			kind:     KindOpsgenie,
+			stored:   map[string]any{"api_key": "OLD-KEY"},
+			incoming: map[string]any{"api_key": "NEW-KEY"},
+		},
+		{
+			name:     "WeCom: config echoed back untouched (masked webhook)",
+			kind:     KindWeCom,
+			stored:   map[string]any{"webhook": "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=REAL"},
+			incoming: map[string]any{"webhook": MaskedValue("https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=REAL")},
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -266,6 +310,44 @@ func TestPrepareConfigUpdateAllowsLegitimateEdits(t *testing.T) {
 			}
 			if merged == nil {
 				t.Fatal("should return a merged result")
+			}
+		})
+	}
+}
+
+// TestPrepareConfigUpdateSingleFieldChannelsStoreRealValues goes one step
+// further than the "no error" check above: for the five channels where one
+// field is both the destination and the entire credential (WeCom, Slack,
+// Discord, PagerDuty, Opsgenie), it asserts what actually ends up stored —
+// a new raw value must be saved verbatim, and an echoed-back masked value
+// must resolve to the real stored secret, never literally "__masked__".
+func TestPrepareConfigUpdateSingleFieldChannelsStoreRealValues(t *testing.T) {
+	cases := []struct {
+		kind, field, stored, incoming, want string
+	}{
+		{KindWeCom, "webhook", "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=OLD", "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=NEW", "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=NEW"},
+		{KindSlack, "webhook", "https://hooks.slack.com/services/OLD", "https://hooks.slack.com/services/NEW", "https://hooks.slack.com/services/NEW"},
+		{KindDiscord, "webhook", "https://discord.com/api/webhooks/OLD", "https://discord.com/api/webhooks/NEW", "https://discord.com/api/webhooks/NEW"},
+		{KindPagerDuty, "routing_key", "OLD-KEY", "NEW-KEY", "NEW-KEY"},
+		{KindOpsgenie, "api_key", "OLD-KEY", "NEW-KEY", "NEW-KEY"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.kind+"/new value", func(t *testing.T) {
+			merged, err := PrepareConfigUpdate(tc.kind, map[string]any{tc.field: tc.stored}, map[string]any{tc.field: tc.incoming})
+			if err != nil {
+				t.Fatalf("new value should be accepted: %v", err)
+			}
+			if got := merged[tc.field]; got != tc.want {
+				t.Fatalf("%s = %v, want %q stored verbatim", tc.field, got, tc.want)
+			}
+		})
+		t.Run(tc.kind+"/masked echo keeps the real secret", func(t *testing.T) {
+			merged, err := PrepareConfigUpdate(tc.kind, map[string]any{tc.field: tc.stored}, map[string]any{tc.field: MaskedValue(tc.stored)})
+			if err != nil {
+				t.Fatalf("echoing the masked value back should be a no-op, not an error: %v", err)
+			}
+			if got := merged[tc.field]; got != tc.stored {
+				t.Fatalf("%s = %v, want the original %q preserved (not the literal masked marker)", tc.field, got, tc.stored)
 			}
 		})
 	}

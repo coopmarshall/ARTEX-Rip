@@ -10,6 +10,7 @@ All notable changes to this project are documented in this file. The format is b
 - **Evidence/PoC code fences now widen past embedded backticks**: a fixed 3-backtick fence closed early the moment captured evidence contained its own `` ``` ``, dumping the remainder as unescaped, unfenced Markdown; the fence now uses one more backtick than the longest run already inside the content (the standard CommonMark-safe technique).
 - Added test coverage for `report.Markdown`/`parseFinding`, which had none before this session.
 - **CSV export now guards against formula injection (CWE-1236)**: `FindingsCSV`'s Name/Class/Task/Summary columns went to the cell unguarded, so a finding whose model-reported title happened to start with `=`, `+`, `-`, `@`, or a tab, would be evaluated as a formula by Excel/Google Sheets on open — on older Excel, chainable into DDE command execution on the analyst's own machine. Such values are now quote-prefixed (`csvFormulaGuard`), the standard mitigation every mainstream spreadsheet app treats as "force this cell to text".
+- Added test coverage proving the destination/credential-masking protection (`PrepareConfigUpdate`) is correct for the five channels where one field is both the destination and the entire credential (WeCom, Slack, Discord, PagerDuty, Opsgenie) — traced through by hand and found already correct, but previously unverified by any test.
 
 ### Findings export
 
