@@ -2,8 +2,10 @@ package llmrec
 
 import (
 	"context"
+	"encoding/json"
 	"iter"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/Autumn-27/artex/db"
@@ -148,5 +150,83 @@ FROM llm_usage WHERE profile_name=$1`, profile).Scan(&count, &input, &output, &w
 		if count != 1 || input != 23 || output != 5 || worker != "btw" || status != wantStatus {
 			t.Fatalf("early=%v: count=%d usage=%d/%d worker=%q status=%q", early, count, input, output, worker, status)
 		}
+	}
+}
+
+func TestThinkingTextConcatenatesOnlyThinkingBlocks(t *testing.T) {
+	msg := llm.Message{Content: []llm.ContentBlock{
+		{Type: llm.BlockThinking, Thinking: "first "},
+		llm.TextBlock("not thinking, should be ignored"),
+		{Type: llm.BlockThinking, Thinking: "second"},
+		{Type: llm.BlockThinking, Thinking: ""}, // empty thinking block contributes nothing
+	}}
+	if got := thinkingText(msg); got != "first second" {
+		t.Fatalf("thinkingText() = %q, want %q", got, "first second")
+	}
+	if got := thinkingText(llm.Message{}); got != "" {
+		t.Fatalf("thinkingText(empty message) = %q, want empty", got)
+	}
+}
+
+// TestSerializeRequestThinkingPrecedence covers the one piece of real logic
+// in serializeRequest: the per-request Thinking override wins over the
+// Recorder's config-level thinkingType (matching norma's own buildBody
+// decision, per the doc comment), and when both are empty no "thinking"
+// field is written at all.
+func TestSerializeRequestThinkingPrecedence(t *testing.T) {
+	decode := func(raw string) map[string]any {
+		var m map[string]any
+		if err := json.Unmarshal([]byte(raw), &m); err != nil {
+			t.Fatalf("serializeRequest did not produce valid JSON: %v\n%s", err, raw)
+		}
+		return m
+	}
+
+	r := &Recorder{thinkingType: "enabled", reasoningEffort: "high"}
+	m := decode(r.serializeRequest(llm.CompletionRequest{Thinking: "disabled"}))
+	thinking, _ := m["thinking"].(map[string]any)
+	if thinking["type"] != "disabled" {
+		t.Fatalf("per-request Thinking override should win, got %v", m["thinking"])
+	}
+	if thinking["effort"] != "high" {
+		t.Fatalf("reasoningEffort has no per-request override, should pass through, got %v", m["thinking"])
+	}
+
+	m = decode(r.serializeRequest(llm.CompletionRequest{}))
+	thinking, _ = m["thinking"].(map[string]any)
+	if thinking["type"] != "enabled" {
+		t.Fatalf("with no per-request override, config thinkingType should be used, got %v", m["thinking"])
+	}
+
+	bare := &Recorder{}
+	m = decode(bare.serializeRequest(llm.CompletionRequest{}))
+	if _, has := m["thinking"]; has {
+		t.Fatalf("no thinkingType/reasoningEffort/override should write no thinking field at all, got %v", m["thinking"])
+	}
+}
+
+// TestSerializeRequestStoresToolNamesNotSchemas covers the "schemas are huge,
+// store only names" branch, which only runs when Tools is non-empty.
+func TestSerializeRequestStoresToolNamesNotSchemas(t *testing.T) {
+	r := &Recorder{}
+	raw := r.serializeRequest(llm.CompletionRequest{
+		Tools: []llm.ToolSchema{
+			{Name: "bash", Description: "run a shell command", InputSchema: map[string]any{"type": "object"}},
+			{Name: "report_finding"},
+		},
+	})
+	var m map[string]any
+	if err := json.Unmarshal([]byte(raw), &m); err != nil {
+		t.Fatalf("not valid JSON: %v", err)
+	}
+	if m["tools_count"].(float64) != 2 {
+		t.Fatalf("tools_count = %v, want 2", m["tools_count"])
+	}
+	names, _ := m["tools"].([]any)
+	if len(names) != 2 || names[0] != "bash" || names[1] != "report_finding" {
+		t.Fatalf("tools should be name-only, got %v", m["tools"])
+	}
+	if strings.Contains(raw, "run a shell command") {
+		t.Fatalf("full tool description/schema should not be stored: %s", raw)
 	}
 }

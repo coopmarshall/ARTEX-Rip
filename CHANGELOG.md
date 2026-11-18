@@ -4,6 +4,10 @@ All notable changes to this project are documented in this file. The format is b
 
 ## [Unreleased]
 
+### Coverage sweep: llmrec
+
+- Added direct tests for `llmrec.thinkingText` and `Recorder.serializeRequest` (0% coverage each): confirmed both already correct (thinking-param override precedence, tool-schema-to-names-only storage), no bug found this time.
+
 ### Security: database password could leak into logs via `config.Redact`
 
 - **Fix: `config.Redact` silently failed to mask the password in libpq keyword/value DSNs** (`host=... user=... password=secret dbname=...`), the alternate connection-string syntax `ARTEX_PG_DSN` may equally well be set to. `url.Parse` does not error on this form — it parses it as an opaque path with no `Userinfo` — so the existing URL-based masking's condition silently never fired, and the real password rode straight through to the one call site (`db.go`'s failed-ping error, `fmt.Errorf("ping postgres (%s): %w", config.Redact(dsn), err)`). Confirmed by hand before fixing: the old code returned such a DSN with its password fully intact. `Redact` now also runs a `password=...` regex pass (handling both quoted and unquoted values) unconditionally on top of the existing URL masking, so both DSN forms are covered regardless of which one was given. Found via `go tool cover -func` (this function had 0% test coverage); added tests for both forms.
