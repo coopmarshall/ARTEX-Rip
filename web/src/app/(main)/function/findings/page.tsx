@@ -262,7 +262,9 @@ export default function FindingsPage() {
   // Export dialog state: scope (current filter / all / selected) × format (single md / per-finding md zip / csv / json / sarif).
   const [exportOpen, setExportOpen] = React.useState(false);
   const [exportScope, setExportScope] = React.useState<"filtered" | "all" | "selected">("filtered");
-  const [exportFormat, setExportFormat] = React.useState<"md-single" | "md-zip" | "csv" | "json" | "sarif">("md-single");
+  const [exportFormat, setExportFormat] = React.useState<"md-single" | "md-zip" | "csv" | "json" | "sarif">(
+    "md-single",
+  );
   const [exporting, setExporting] = React.useState(false);
 
   const toggleSelected = React.useCallback((id: string, checked: boolean) => {
