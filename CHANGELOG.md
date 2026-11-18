@@ -9,6 +9,7 @@ All notable changes to this project are documented in this file. The format is b
 - **Test gap fixed**: `TestCoreTaskLifecyclePG`'s "it shows in the task list" step fetched `/api/tasks` and checked only the HTTP status code — the response body was never actually inspected, so the comment's claim was unverified. Now asserts the created task is actually present in the returned list.
 - Removed two confirmed-dead private functions (`(*taskLLMRuntime).current()`, superseded by `currentFor` taking an explicit context; `enrich.isBlank`, zero callers) and simplified a no-op `fmt.Sprintf("%s", ...)` in `config.Redact`.
 - Set up a local PostgreSQL instance in this dev environment so the full test suite (previously 436 tests skipped for "postgres unavailable") now actually runs end-to-end, including `db/`, `guard/`, and `intercept/`.
+- Removed a third confirmed-dead piece of code: `findingTrafficGuidance` in `agent/finding_recorder.go`, a leftover prompt string from an earlier version of the traffic-evidence-binding feature, fully superseded by the richer guidance now assembled in `agent/finding_workflow.go` and `agent/promptcatalog.go` (traced every reference before removing; it had none).
 
 ### Security: Markdown injection in report/findings exports
 

@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"fmt"
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
@@ -47,14 +46,14 @@ func ingestServer(t *testing.T) (*Server, func(method, path, body string) *httpt
 func TestTrafficIngestFlow(t *testing.T) {
 	s, request := ingestServer(t)
 
-	body := fmt.Sprintf(`{"exchanges":[
+	body := `{"exchanges":[
 		{"method":"POST","url":"https://api.example.com/v1/login","status":200,
 		 "requestHeaders":{"content-type":"application/json"},"requestBody":"{\"u\":\"u1\"}",
 		 "responseHeaders":{"content-type":"application/json"},"responseBody":"{\"token\":\"t\"}"},
 		{"method":"GET","url":"https://api.example.com/v1/profile","status":200,
 		 "requestHeaders":{},"requestBody":"",
 		 "responseHeaders":{},"responseBody":"{\"name\":\"n\"}"}
-	]}`)
+	]}`
 	w := request("POST", "/api/traffic/ingest", body)
 	if w.Code != 200 {
 		t.Fatalf("ingest status = %d, body = %s", w.Code, w.Body)
