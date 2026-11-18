@@ -4,6 +4,10 @@ All notable changes to this project are documented in this file. The format is b
 
 ## [Unreleased]
 
+### Findings export
+
+- **SARIF export**: the findings page export dialog gains a `sarif` format (SARIF 2.1.0), so a batch of findings can be ingested directly by code-scanning dashboards (GitHub Code Scanning and most SAST/DAST aggregators) without a bespoke parser. Findings sharing a vulnerability class collapse onto one SARIF rule with many results; POE level, verification status/note, and counterevidence ride along in `result.properties` so they are not dropped by generic viewers.
+
 ### Notifications
 
 - **Slack channel**: a `slack` notification channel (Incoming Webhook) alongside DingTalk/Feishu/WeCom/Webhook/Telegram/Email, with the same severity filters, digest batching and rate limiting as the others. Untrusted content (finding titles/summaries) is escaped against Slack mrkdwn link injection (`<url|text>`) the same way Telegram escapes HTML.
