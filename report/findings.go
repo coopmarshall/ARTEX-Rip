@@ -150,7 +150,7 @@ func FindingsCSV(fs []*db.DBFinding) []byte {
 	var buf bytes.Buffer
 	buf.WriteString("\xEF\xBB\xBF") // UTF-8 BOM
 	w := csv.NewWriter(&buf)
-	_ = w.Write([]string{"ID", "Name", "Class", "Severity", "Status", "Task", "Found At", "Summary", "Traffic Evidence Count", "Traffic Evidence IDs"})
+	_ = w.Write([]string{"ID", "Name", "Class", "Severity", "Status", "PoE Level", "Verification Status", "Task", "Found At", "Summary", "Traffic Evidence Count", "Traffic Evidence IDs"})
 	for _, f := range items {
 		_ = w.Write([]string{
 			fmt.Sprintf("%d", f.ID),
@@ -158,6 +158,8 @@ func FindingsCSV(fs []*db.DBFinding) []byte {
 			f.VulnClass,
 			nz(f.Severity, "info"),
 			nz(f.Status, "pending"),
+			fmt.Sprint(f.PoELevel),
+			nz(f.VerificationStatus, "not_assessed"),
 			f.TaskDescription,
 			f.CreatedAt.Format("2006-01-02 15:04:05"),
 			strings.TrimSpace(f.Summary),

@@ -7,6 +7,7 @@ All notable changes to this project are documented in this file. The format is b
 ### Findings export
 
 - **SARIF export**: the findings page export dialog gains a `sarif` format (SARIF 2.1.0), so a batch of findings can be ingested directly by code-scanning dashboards (GitHub Code Scanning and most SAST/DAST aggregators) without a bespoke parser. Findings sharing a vulnerability class collapse onto one SARIF rule with many results; POE level, verification status/note, and counterevidence ride along in `result.properties` so they are not dropped by generic viewers.
+- **CSV export carries verification fields**: the `csv` format gains `PoE Level` and `Verification Status` columns (defaulting to `0`/`not_assessed` for older findings), matching what SARIF/JSON already expose.
 
 ### Notifications
 
@@ -19,6 +20,7 @@ All notable changes to this project are documented in this file. The format is b
 - **`exploit-intel`**: cross-reference fingerprinted software/versions and CVE ids against Exploit-DB (`searchsploit`), the NVD API, CIRCL cve-search, and recent-PoC trackers (nomi-sec/PoC-in-GitHub, trickest/cve), with PoC-hygiene rules (read before running, non-destructive, in-scope only) and the same verification discipline as other finding types.
 - **`cloud-recon`**: map an authorized target's cloud footprint (S3/GCS/Azure Blob buckets, IAM role trust, management-plane exposure, metadata-SSRF leads) and verify misconfigurations with minimal, non-destructive reads only.
 - **`container-k8s`**: find and verify container-runtime/orchestrator misconfiguration (exposed Docker Engine API, Kubernetes API/kubelet, RBAC overreach, privileged/hostPath pods, open etcd), with the same non-destructive verification discipline.
+- **`mobile-security`**: static and dynamic testing of Android/iOS app packages (manifest/entitlement review, hardcoded secrets, insecure storage, certificate-pinning bypass, IPC/deep-link abuse, WebView bridge exposure), distinct from the backend API it talks to.
 
 ## [0.6.0] - 2026-11-12
 
