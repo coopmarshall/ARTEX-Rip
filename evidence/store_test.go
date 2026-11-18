@@ -331,3 +331,87 @@ func TestEvidenceGCGraceAndActiveRestore(t *testing.T) {
 		t.Fatal("accepted tampered snapshot")
 	}
 }
+
+// TestStageFindingsExportPopulatesAndCopiesBodies covers the findings-export
+// staging path directly (0% coverage): it must freeze the finding's current
+// binding/version/report state onto the passed-in *db.DBFinding, and, when
+// copyBodies is requested, produce real byte-for-byte body copies in dest
+// for both an inline and a blob-spilled exchange -- covering the same
+// hashPath/verifyFile machinery the zip-slip-safe FindingFilename sanitizer
+// in report/ sits next to in the export pipeline.
+func TestStageFindingsExportPopulatesAndCopiesBodies(t *testing.T) {
+	s, in, _ := evidenceFixture(t)
+	ctx := context.Background()
+	inlineBody := []byte("small inline request/response body")
+	spilledBody := bytes.Repeat([]byte{0, 1, 2, 255, 'a', 'b'}, 180000)
+	seedExchange(t, s, "inline", inlineBody, false)
+	seedExchange(t, s, "spilled", spilledBody, true)
+
+	refs := []db.TrafficRef{{TrafficID: "inline", Role: "baseline"}, {TrafficID: "spilled", Role: "proof"}}
+	r, err := s.Record(ctx, in, refs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	finding, err := s.DB.GetFinding(r.FindingID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	dest := t.TempDir()
+	if err := s.StageFindingsExport(ctx, []*db.DBFinding{finding}, dest, true); err != nil {
+		t.Fatal(err)
+	}
+	if len(finding.TrafficBindings) != 2 || finding.TrafficCount != 2 {
+		t.Fatalf("bindings not populated: count=%d bindings=%+v", finding.TrafficCount, finding.TrafficBindings)
+	}
+	if finding.EvidenceVersion != r.Traffic.Version {
+		t.Fatalf("EvidenceVersion = %d, want %d", finding.EvidenceVersion, r.Traffic.Version)
+	}
+
+	readBack := func(hash string) []byte {
+		t.Helper()
+		path, err := hashPath(dest, hash)
+		if err != nil {
+			t.Fatalf("hashPath(%q): %v", hash, err)
+		}
+		b, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("reading staged copy for %q: %v", hash, err)
+		}
+		return b
+	}
+	// seedExchange always writes a fixed "{}" request body and only varies
+	// the response with the given body/spill combination.
+	for _, b := range finding.TrafficBindings {
+		var wantResp []byte
+		switch b.SnapshotID {
+		case r.Traffic.Bindings[0].SnapshotID:
+			wantResp = inlineBody
+		case r.Traffic.Bindings[1].SnapshotID:
+			wantResp = spilledBody
+		}
+		if got := readBack(b.Snapshot.ReqHash); string(got) != "{}" {
+			t.Fatalf("staged request body mismatch for snapshot %s: got %q, want \"{}\"", b.SnapshotID, got)
+		}
+		if got := readBack(b.Snapshot.RespHash); !bytes.Equal(got, wantResp) {
+			t.Fatalf("staged response body mismatch for snapshot %s: got %d bytes, want %d", b.SnapshotID, len(got), len(wantResp))
+		}
+	}
+
+	// copyBodies=false must populate metadata but copy nothing.
+	finding2, err := s.DB.GetFinding(r.FindingID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dest2 := t.TempDir()
+	if err := s.StageFindingsExport(ctx, []*db.DBFinding{finding2}, dest2, false); err != nil {
+		t.Fatal(err)
+	}
+	entries, err := os.ReadDir(dest2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("copyBodies=false should stage nothing, found %v", entries)
+	}
+}

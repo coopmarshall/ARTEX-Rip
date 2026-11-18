@@ -4,6 +4,10 @@ All notable changes to this project are documented in this file. The format is b
 
 ## [Unreleased]
 
+### Coverage sweep: evidence
+
+- Added a direct end-to-end test for `Store.StageFindingsExport` (0% coverage) — the findings-export staging path that freezes a finding's binding/version/report state and, with `copyBodies`, produces real byte-for-byte body copies for the md-zip/report download. Covers both an inline and a blob-spilled exchange, and the `copyBodies=false` case (metadata populated, nothing staged). Confirmed correct.
+
 ### Coverage sweep: traffic
 
 - Added direct tests for `pathWithin` (the traversal gate `RecoverHostDeleteStages` checks before trusting a path recorded in a crash-recovery journal — a bug here would let a corrupted/tampered journal move a file outside the intended directory during recovery) and `splitLegacyEvidence` (the legacy request/response header/body splitter), both previously undertested (75%/0%). Both confirmed correct, including the deliberately-tricky case of a child directory literally named `..foo` (not a parent reference) correctly passing `pathWithin`. Noted but did not act on: `pathWithin` checks paths lexically and does not resolve symlinks, so a symlink planted inside the traffic store pointing outside it would not be caught by this check alone — not fixed, since assessing real exploitability would require tracing the recovery code's actual file-move semantics (it uses `Lstat`, suggesting symlinks may already be handled deliberately elsewhere) more carefully than this session's time budget allows; flagging for a future, more careful look rather than guessing at a fix in this higher-risk package.
