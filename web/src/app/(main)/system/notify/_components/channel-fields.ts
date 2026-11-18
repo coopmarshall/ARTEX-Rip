@@ -11,6 +11,7 @@ export const KIND_LABEL: Record<string, string> = {
   webhook: "Generic Webhook",
   telegram: "Telegram",
   email: "Email",
+  slack: "Slack",
 };
 
 // Config field definitions per channel.
@@ -84,6 +85,15 @@ export const CHANNEL_FIELDS: Record<string, FieldDef[]> = {
         "Leave empty to use the built-in default template. Variables: {{.Title}} {{.Batch}} {{.Count}} {{.HomeURL}} {{.SentAt}}, " +
         "plus .Name/.VulnClass/.Severity/.Summary/.Assets/.DetailURL/.StatusLabel under range .Items. " +
         "Use {{json .Xxx}} instead of {{.Xxx}} to insert strings, or quotes in titles will break the JSON.",
+    },
+  ],
+  slack: [
+    {
+      key: "webhook",
+      label: "Webhook URL",
+      kind: "text",
+      placeholder: "https://hooks.slack.com/services/T000/B000/XXXXXXXX",
+      help: "Create one under the target channel: Slack App settings → Incoming Webhooks",
     },
   ],
   telegram: [

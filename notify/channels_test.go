@@ -253,6 +253,74 @@ func TestTelegramErrorClassification(t *testing.T) {
 	}
 }
 
+func TestSlackEscapesMrkdwnLinkInjection(t *testing.T) {
+	var text string
+	srv := capturePost(t, `ok`, func(t *testing.T, body map[string]any, _ *http.Request) {
+		text, _ = body["text"].(string)
+	})
+	m := Message{Items: []Item{{
+		Severity: "high",
+		// Untrusted content (model output / target response) trying to forge a
+		// clickable Slack link via mrkdwn's <url|text> syntax.
+		Name:    "SQLi <https://evil.example.com|URGENT: verify your account>",
+		Summary: "a & b < c",
+	}}}
+	if _, err := (slackChannel{}).Send(context.Background(), map[string]any{"webhook": srv.URL}, m); err != nil {
+		t.Fatalf("delivery failed: %v", err)
+	}
+	if strings.Contains(text, "<https://evil.example.com|") {
+		t.Fatalf("mrkdwn link injection not escaped: %q", text)
+	}
+	if !strings.Contains(text, "&lt;https://evil.example.com|") {
+		t.Fatalf("expected escaped entities, got %q", text)
+	}
+	if !strings.Contains(text, "a &amp; b &lt; c") {
+		t.Fatalf("& and < not escaped, got %q", text)
+	}
+}
+
+func TestSlackBatchIncludesBacklink(t *testing.T) {
+	var text string
+	srv := capturePost(t, `ok`, func(t *testing.T, body map[string]any, _ *http.Request) {
+		text, _ = body["text"].(string)
+	})
+	if _, err := (slackChannel{}).Send(context.Background(), map[string]any{"webhook": srv.URL}, batchMsg(3)); err != nil {
+		t.Fatalf("delivery failed: %v", err)
+	}
+	if !strings.Contains(text, "Last 30 min") {
+		t.Errorf("batch body missing the time window: %q", text)
+	}
+	if !strings.Contains(text, "<https://artex.local/function/findings|View all on the platform>") {
+		t.Errorf("batch body missing the backlink: %q", text)
+	}
+}
+
+// TestSlackReportsRealStatusCodes locks in the one trait that sets Slack apart
+// from DingTalk/WeCom/Telegram: delivery failures surface as an HTTP status,
+// not a 200 with a business errcode, so doJSON's existing classification needs
+// no business-error unwrapping for this channel.
+func TestSlackReportsRealStatusCodes(t *testing.T) {
+	rateLimited := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusTooManyRequests)
+		_, _ = io.WriteString(w, "rate_limited")
+	}))
+	t.Cleanup(rateLimited.Close)
+	_, err := (slackChannel{}).Send(context.Background(), map[string]any{"webhook": rateLimited.URL}, singleMsg())
+	if err == nil || IsPermanent(err) {
+		t.Fatalf("429 should be retryable, got %v", err)
+	}
+
+	notFound := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = io.WriteString(w, "no_service")
+	}))
+	t.Cleanup(notFound.Close)
+	_, err = (slackChannel{}).Send(context.Background(), map[string]any{"webhook": notFound.URL}, singleMsg())
+	if err == nil || !IsPermanent(err) {
+		t.Fatalf("404 (bad webhook) is a configuration error, should be permanent, got %v", err)
+	}
+}
+
 func TestWebhookDefaultTemplateProducesValidJSON(t *testing.T) {
 	// This case is the whole point of the default template: when the title
 	// contains quotes and newlines, any naive `"title": "{{.Title}}"` produces
@@ -427,6 +495,7 @@ func TestChannelValidateReportsMissingFields(t *testing.T) {
 		{KindWeCom, map[string]any{}, "Webhook"},
 		{KindTelegram, map[string]any{}, "Bot Token"},
 		{KindTelegram, map[string]any{"bot_token": "t"}, "Chat ID"},
+		{KindSlack, map[string]any{}, "Webhook"},
 		{KindEmail, map[string]any{}, "SMTP"},
 		{KindEmail, map[string]any{"host": "h"}, "port"},
 		{KindEmail, map[string]any{"host": "h", "port": 587, "from": "f"}, "recipient"},
@@ -481,9 +550,9 @@ func TestEmailSMTPErrorClassification(t *testing.T) {
 }
 
 func TestRegistryCoversAllKinds(t *testing.T) {
-	// All six channels are required — a missing one would silently vanish from
+	// All seven channels are required — a missing one would silently vanish from
 	// the UI dropdown.
-	want := []string{KindDingTalk, KindEmail, KindFeishu, KindTelegram, KindWebhook, KindWeCom}
+	want := []string{KindDingTalk, KindEmail, KindFeishu, KindSlack, KindTelegram, KindWebhook, KindWeCom}
 	got := Kinds()
 	if len(got) != len(want) {
 		t.Fatalf("channel count should be %d, got %d: %v", len(want), len(got), got)

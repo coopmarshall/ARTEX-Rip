@@ -2,6 +2,17 @@
 
 All notable changes to this project are documented in this file. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Notifications
+
+- **Slack channel**: a `slack` notification channel (Incoming Webhook) alongside DingTalk/Feishu/WeCom/Webhook/Telegram/Email, with the same severity filters, digest batching and rate limiting as the others. Untrusted content (finding titles/summaries) is escaped against Slack mrkdwn link injection (`<url|text>`) the same way Telegram escapes HTML.
+
+### New skills
+
+- **`secrets-hunting`**: find and minimally verify exposed credentials (JS bundles/source maps, exposed `.git`, backups, verbose errors, cloud metadata SSRF, container layers), tied into the verified-findings fields (`poe_level`, `verification_status`).
+- **`exploit-intel`**: cross-reference fingerprinted software/versions and CVE ids against Exploit-DB (`searchsploit`), the NVD API, CIRCL cve-search, and recent-PoC trackers (nomi-sec/PoC-in-GitHub, trickest/cve), with PoC-hygiene rules (read before running, non-destructive, in-scope only) and the same verification discipline as other finding types.
+
 ## [0.6.0] - 2026-11-12
 
 Machine-checked finding verification (S1), intercept decisions traced to their actor, configurable notification limits, prompt hardening and goal guards from the #124 agentic audit, the target gate (S3b phase 1 and step 2.1, off by default and API-only), intent claim leases, and checksum-verified tool downloads in the Docker image.
