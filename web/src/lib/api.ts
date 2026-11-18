@@ -112,6 +112,23 @@ function getToken(): string | null {
   return localStorage.getItem("artex_token");
 }
 
+// errorFromResponse extracts the backend's {error: "..."} message from a
+// non-ok Response, falling back to a caller-supplied status-based message
+// when the body is empty or not JSON. Shared by http() below and the few
+// endpoints further down that fetch the raw Response directly (for a blob,
+// text body, or a response header) and so can't go through http()/get()/post().
+export async function errorFromResponse(r: Response, fallback: string): Promise<string> {
+  try {
+    const payload = (await r.json()) as { error?: unknown };
+    if (typeof payload.error === "string" && payload.error.trim()) {
+      return payload.error.trim();
+    }
+  } catch {
+    // Keep the fallback for an empty or non-JSON error response.
+  }
+  return fallback;
+}
+
 export async function http<T>(path: string, init?: RequestInit): Promise<T> {
   if (MOCK) return mockHandle<T>(init?.method ?? "GET", path, init?.body ?? null);
   const token = getToken();
@@ -132,17 +149,7 @@ export async function http<T>(path: string, init?: RequestInit): Promise<T> {
     throw new Error("Unauthorized");
   }
   if (!r.ok) {
-    const fallback = `${init?.method ?? "GET"} ${path}: ${r.status}`;
-    let message = fallback;
-    try {
-      const payload = (await r.json()) as { error?: unknown };
-      if (typeof payload.error === "string" && payload.error.trim()) {
-        message = payload.error.trim();
-      }
-    } catch {
-      // Keep the status-based fallback for empty or non-JSON error responses.
-    }
-    throw new Error(message);
+    throw new Error(await errorFromResponse(r, `${init?.method ?? "GET"} ${path}: ${r.status}`));
   }
   if (r.status === 204) return undefined as T;
   return r.json();
@@ -458,7 +465,7 @@ export const api = {
       headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
       body: fd,
     });
-    if (!r.ok) throw new Error(`Upload failed: ${r.status}`);
+    if (!r.ok) throw new Error(await errorFromResponse(r, `Upload failed: ${r.status}`));
     return r.json() as Promise<{ uploaded: number }>;
   },
   workspaceDownload: async (path: string) => {
@@ -470,7 +477,7 @@ export const api = {
       const r = await fetch(`/api/workspace/download?path=${encodeURIComponent(path)}`, {
         headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
       });
-      if (!r.ok) throw new Error(`Download failed: ${r.status}`);
+      if (!r.ok) throw new Error(await errorFromResponse(r, `Download failed: ${r.status}`));
       blob = await r.blob();
     }
     const objUrl = URL.createObjectURL(blob);
@@ -584,7 +591,7 @@ export const api = {
     const r = await fetch(`/api/exploration/findings/export?${p.toString()}`, {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     });
-    if (!r.ok) throw new Error(`export: ${r.status}`);
+    if (!r.ok) throw new Error(await errorFromResponse(r, `export: ${r.status}`));
     const blob = await r.blob();
     // Prefer the backend's Content-Disposition for the filename; fall back to a default name.
     const disp = r.headers.get("Content-Disposition") ?? "";
@@ -879,7 +886,7 @@ export const api = {
     const r = await fetch(`/api/report${tq(task)}`, {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     });
-    if (!r.ok) throw new Error(`report: ${r.status}`);
+    if (!r.ok) throw new Error(await errorFromResponse(r, `report: ${r.status}`));
     return r.text();
   },
   chatMentions: (kind: string, query: string, signal?: AbortSignal, cursor = "") =>

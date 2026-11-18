@@ -4,6 +4,10 @@ All notable changes to this project are documented in this file. The format is b
 
 ## [Unreleased]
 
+### Fix: raw-fetch frontend endpoints showed only an HTTP status on error
+
+- `workspaceUpload`, `workspaceDownload`, `exportFindings` and `report` (`web/src/lib/api.ts`) fetch the raw `Response` directly (for a blob, text body, or a response header) and so bypass the shared `http()` helper -- which meant their error path only ever showed `"Upload failed: 500"` instead of the backend's actual `{error: "..."}` message, unlike the rest of the API surface. Extracted the error-body-extraction logic `http()` already had into a small shared `errorFromResponse()` helper and applied it to all four, so a real backend error message (e.g. an export failure, a disk-full upload) now reaches the user instead of a bare status code. Pre-existing, not introduced this session; not a behavior regression risk since the fallback message is unchanged when the error body is empty or non-JSON.
+
 ### New: print stylesheet for the HTML findings export
 
 - Checked that this session's notify channels (Slack/Discord/PagerDuty/Opsgenie) have matching frontend config UI -- confirmed already correctly wired (the kind selector and field table are both data-driven, not hardcoded per channel, so a new backend channel only needed a `CHANNEL_FIELDS`/`KIND_LABEL` entry, which was already present).
